@@ -1,0 +1,181 @@
+# French Translation for Migration Service
+# Copyright (C) 2024 Migration Service Project
+# This file is distributed under the same license as the Migration Service package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Migration Service 1.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2024-01-01 12:00+0000\n"
+"PO-Revision-Date: 2024-01-01 12:00+0000\n"
+"Last-Translator: System <system@example.com>\n"
+"Language-Team: French\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+# Common messages
+msgid "Welcome to Migration Service"
+msgstr "Bienvenue dans le Service de Migration"
+
+msgid "Processing image..."
+msgstr "Traitement de l'image..."
+
+msgid "Analysis complete"
+msgstr "Analyse terminée"
+
+msgid "Error occurred"
+msgstr "Erreur survenue"
+
+msgid "Service started"
+msgstr "Service démarré"
+
+msgid "Service stopped"
+msgstr "Service arrêté"
+
+# Status messages
+msgid "Running"
+msgstr "En cours"
+
+msgid "Stopped"
+msgstr "Arrêté"
+
+msgid "Failed"
+msgstr "Échec"
+
+msgid "Completed"
+msgstr "Terminé"
+
+msgid "Pending"
+msgstr "En attente"
+
+msgid "Processing"
+msgstr "Traitement"
+
+# Medical terms
+msgid "Patient"
+msgstr "Patient"
+
+msgid "Study"
+msgstr "Étude"
+
+msgid "Series"
+msgstr "Série"
+
+msgid "Image"
+msgstr "Image"
+
+msgid "Diagnosis"
+msgstr "Diagnostic"
+
+msgid "Modality"
+msgstr "Modalité"
+
+msgid "Date"
+msgstr "Date"
+
+msgid "Time"
+msgstr "Heure"
+
+# Services
+msgid "DICOM Service"
+msgstr "Service DICOM"
+
+msgid "HL7 Service"
+msgstr "Service HL7"
+
+msgid "AI Processing"
+msgstr "Traitement IA"
+
+msgid "Speech Service"
+msgstr "Service Vocal"
+
+msgid "Web Interface"
+msgstr "Interface Web"
+
+msgid "SSH Server"
+msgstr "Serveur SSH"
+
+# Actions
+msgid "Start"
+msgstr "Démarrer"
+
+msgid "Stop"
+msgstr "Arrêter"
+
+msgid "Restart"
+msgstr "Redémarrer"
+
+msgid "Configure"
+msgstr "Configurer"
+
+msgid "Search"
+msgstr "Rechercher"
+
+msgid "Upload"
+msgstr "Télécharger"
+
+msgid "Download"
+msgstr "Télécharger"
+
+msgid "Delete"
+msgstr "Supprimer"
+
+msgid "Save"
+msgstr "Enregistrer"
+
+msgid "Cancel"
+msgstr "Annuler"
+
+# Messages with pluralization
+msgid "{count} image"
+msgid_plural "{count} images"
+msgstr[0] "{count} image"
+msgstr[1] "{count} images"
+
+msgid "{count} patient"
+msgid_plural "{count} patients"
+msgstr[0] "{count} patient"
+msgstr[1] "{count} patients"
+
+msgid "{count} study"
+msgid_plural "{count} studies"
+msgstr[0] "{count} étude"
+msgstr[1] "{count} études"
+
+# Error messages
+msgid "Connection failed"
+msgstr "Connexion échouée"
+
+msgid "File not found"
+msgstr "Fichier introuvable"
+
+msgid "Access denied"
+msgstr "Accès refusé"
+
+msgid "Invalid format"
+msgstr "Format invalide"
+
+msgid "Service unavailable"
+msgstr "Service indisponible"
+
+msgid "Timeout occurred"
+msgstr "Délai d'attente dépassé"
+
+# Success messages
+msgid "Operation completed successfully"
+msgstr "Opération terminée avec succès"
+
+msgid "File uploaded successfully"
+msgstr "Fichier téléchargé avec succès"
+
+msgid "Configuration saved"
+msgstr "Configuration enregistrée"
+
+msgid "Service started successfully"
+msgstr "Service démarré avec succès"
+
+msgid "Connection established"
+msgstr "Connexion établie"

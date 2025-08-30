@@ -1,0 +1,180 @@
+# English Translation for Migration Service
+# Copyright (C) 2024 Migration Service Project
+# This file is distributed under the same license as the Migration Service package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Migration Service 1.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2024-01-01 12:00+0000\n"
+"PO-Revision-Date: 2024-01-01 12:00+0000\n"
+"Last-Translator: System <system@example.com>\n"
+"Language-Team: English\n"
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+# Common messages
+msgid "Welcome to Migration Service"
+msgstr "Welcome to Migration Service"
+
+msgid "Processing image..."
+msgstr "Processing image..."
+
+msgid "Analysis complete"
+msgstr "Analysis complete"
+
+msgid "Error occurred"
+msgstr "Error occurred"
+
+msgid "Service started"
+msgstr "Service started"
+
+msgid "Service stopped"
+msgstr "Service stopped"
+
+# Status messages
+msgid "Running"
+msgstr "Running"
+
+msgid "Stopped"
+msgstr "Stopped"
+
+msgid "Failed"
+msgstr "Failed"
+
+msgid "Completed"
+msgstr "Completed"
+
+msgid "Pending"
+msgstr "Pending"
+
+msgid "Processing"
+msgstr "Processing"
+
+# Medical terms
+msgid "Patient"
+msgstr "Patient"
+
+msgid "Study"
+msgstr "Study"
+
+msgid "Series"
+msgstr "Series"
+
+msgid "Image"
+msgstr "Image"
+
+msgid "Diagnosis"
+msgstr "Diagnosis"
+
+msgid "Modality"
+msgstr "Modality"
+
+msgid "Date"
+msgstr "Date"
+
+msgid "Time"
+msgstr "Time"
+
+# Services
+msgid "DICOM Service"
+msgstr "DICOM Service"
+
+msgid "HL7 Service"
+msgstr "HL7 Service"
+
+msgid "AI Processing"
+msgstr "AI Processing"
+
+msgid "Speech Service"
+msgstr "Speech Service"
+
+msgid "Web Interface"
+msgstr "Web Interface"
+
+msgid "SSH Server"
+msgstr "SSH Server"
+
+# Actions
+msgid "Start"
+msgstr "Start"
+
+msgid "Stop"
+msgstr "Stop"
+
+msgid "Restart"
+msgstr "Restart"
+
+msgid "Configure"
+msgstr "Configure"
+
+msgid "Search"
+msgstr "Search"
+
+msgid "Upload"
+msgstr "Upload"
+
+msgid "Download"
+msgstr "Download"
+
+msgid "Delete"
+msgstr "Delete"
+
+msgid "Save"
+msgstr "Save"
+
+msgid "Cancel"
+msgstr "Cancel"
+
+# Messages with pluralization
+msgid "{count} image"
+msgid_plural "{count} images"
+msgstr[0] "{count} image"
+msgstr[1] "{count} images"
+
+msgid "{count} patient"
+msgid_plural "{count} patients"
+msgstr[0] "{count} patient"
+msgstr[1] "{count} patients"
+
+msgid "{count} study"
+msgid_plural "{count} studies"
+msgstr[0] "{count} study"
+msgstr[1] "{count} studies"
+
+# Error messages
+msgid "Connection failed"
+msgstr "Connection failed"
+
+msgid "File not found"
+msgstr "File not found"
+
+msgid "Access denied"
+msgstr "Access denied"
+
+msgid "Invalid format"
+msgstr "Invalid format"
+
+msgid "Service unavailable"
+msgstr "Service unavailable"
+
+msgid "Timeout occurred"
+msgstr "Timeout occurred"
+
+# Success messages
+msgid "Operation completed successfully"
+msgstr "Operation completed successfully"
+
+msgid "File uploaded successfully"
+msgstr "File uploaded successfully"
+
+msgid "Configuration saved"
+msgstr "Configuration saved"
+
+msgid "Service started successfully"
+msgstr "Service started successfully"
+
+msgid "Connection established"
+msgstr "Connection established"

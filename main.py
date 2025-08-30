@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Migration Service - Main Entry Point
+Lethologic Anomia - Main Entry Point
 
 This is a Python port of the C++ DICOM/HL7 Migration Service with AI integration.
 Converts the original Windows service to a cross-platform Python application.
@@ -57,7 +57,7 @@ def signal_handler(signum, frame):
 
 async def initialize_services(settings: Settings) -> ProcessManager:
     """Initialize all core services"""
-    logger.info("Initializing Migration Service...")
+    logger.info("Initializing Lethologic Anomia...")
     
     # Initialize database
     db_manager = DatabaseManager(settings.database_url)
@@ -149,7 +149,7 @@ async def run_main_loop(settings: Settings, process_manager: ProcessManager):
 def main(config: Optional[str], daemon: bool, install: bool, uninstall: bool, 
          debug: bool, help_extended: bool):
     """
-    Migration Service - DICOM/HL7 Medical Image Data Migration with AI
+    Lethologic Anomia - DICOM/HL7 Medical Image Data Migration with AI
     
     This is a comprehensive medical imaging migration service that supports:
     - DICOM C-FIND, C-STORE, C-MOVE operations
@@ -163,7 +163,7 @@ def main(config: Optional[str], daemon: bool, install: bool, uninstall: bool,
     
     if help_extended:
         console.print("""
-[bold blue]Migration Service - Extended Help[/bold blue]
+[bold blue]Lethologic Anomia - Extended Help[/bold blue]
 
 [bold]Original C++ Commands (now Python equivalents):[/bold]
 - help                  : Show available commands

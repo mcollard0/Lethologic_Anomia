@@ -1,6 +1,6 @@
-# Migration Service - C++ to Python Conversion Progress
+# Lethologic Anomia - C++ to Python Conversion Progress
 
-This file tracks the progress of converting the C++ DICOM/HL7 Migration Service to Python.
+This file tracks the progress of converting the C++ DICOM/HL7 Migration Service to Python, now called Lethologic Anomia.
 
 ## Project Overview
 
@@ -12,7 +12,7 @@ Converting a Windows C++ service application to a cross-platform Python applicat
 ## Completed Tasks ✅
 
 ### 1. Project Structure Setup ✅
-- [x] Created Git repository at `/mnt/4f79e4ad-b75d-46a5-af16-ca1bd092ce07/Archive/MigrationService`
+- [x] Created Git repository at `/mnt/4f79e4ad-b75d-46a5-af16-ca1bd092ce07/Archive/Lethologic Anomia`
 - [x] Set up Python project structure with core modules
 - [x] Created `requirements.txt` with all necessary dependencies
 - [x] Created `main.py` as primary entry point (equivalent to C++ main function)
@@ -140,7 +140,7 @@ Converting a Windows C++ service application to a cross-platform Python applicat
 
 ## Current File Structure
 ```
-MigrationService/
+Lethologic Anomia/
 ├── main.py                 # Main entry point
 ├── requirements.txt        # Python dependencies
 ├── PROGRESS.md            # This file

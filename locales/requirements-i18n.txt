@@ -1,0 +1,14 @@
+# Internationalization Dependencies for Migration Service
+# Install with: pip install -r locales/requirements-i18n.txt
+
+# Core i18n support
+babel>=2.12.0
+pytz>=2023.3
+
+# Optional enhancements
+babel-django>=0.6.2
+polib>=1.2.0
+
+# For advanced locale detection
+langdetect>=1.0.9
+python-dateutil>=2.8.2
