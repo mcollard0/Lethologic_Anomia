@@ -1,0 +1,57 @@
+# Core dependencies
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+redis==5.0.1
+sqlalchemy==2.0.23
+alembic==1.13.0
+psycopg2-binary==2.9.9  # PostgreSQL
+pymysql==1.1.0  # MySQL/MariaDB
+oracledb==2.0.0  # Oracle
+pymongo==4.6.0  # MongoDB
+
+# DICOM support
+pydicom==2.4.4
+pynetdicom==2.0.2
+
+# HL7/FHIR support
+python-hl7==0.3.5
+fhir.resources==7.0.2
+
+# AI/ML and NLP
+transformers==4.36.0
+torch==2.1.0
+torchaudio==2.1.0
+speechrecognition==3.10.0
+pyttsx3==2.90
+whisper==1.1.10
+
+# Web and network
+requests==2.31.0
+websockets==12.0
+paramiko==3.3.1  # SSH support
+cryptography==41.0.8
+
+# Utilities
+python-dotenv==1.0.0
+pydantic-settings==2.1.0
+click==8.1.7
+rich==13.7.0
+babel==2.14.0  # i18n support
+schedule==1.2.0
+watchdog==3.0.0
+
+# Database drivers
+aiopg==1.4.0
+aiomysql==0.2.0
+motor==3.3.2  # Async MongoDB
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+
+# Development
+black==23.11.0
+flake8==6.1.0
+mypy==1.7.1
