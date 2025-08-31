@@ -398,3 +398,72 @@ class DatabaseManager:
     async def get_config(self, name: str, default: Optional[str] = None) -> Optional[str]:
         """
         Get configuration value
+        
+        Args:
+            name: Configuration name
+            default: Default value if not found
+            
+        Returns:
+            Configuration value or default
+        """
+        try:
+            result = await self.execute_query(
+                "SELECT value FROM config WHERE name = ?", (name,)
+            )
+            if result and result[0].get('value'):
+                return result[0]['value']
+            return default
+        except Exception as e:
+            logger.error(f"Error getting config {name}: {e}")
+            return default
+    
+    async def set_config(self, name: str, value: str) -> None:
+        """
+        Set configuration value
+        
+        Args:
+            name: Configuration name
+            value: Configuration value
+        """
+        try:
+            await self.execute_query(
+                "INSERT OR REPLACE INTO config (name, value) VALUES (?, ?)",
+                (name, value)
+            )
+        except Exception as e:
+            logger.error(f"Error setting config {name}: {e}")
+            raise
+    
+    async def execute_query(
+        self, 
+        query: str, 
+        params: Optional[Tuple] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Execute a SQL query and return results
+        
+        Args:
+            query: SQL query to execute
+            params: Query parameters
+            
+        Returns:
+            List of result dictionaries
+        """
+        try:
+            if self.db_type == 'mongodb':
+                # For MongoDB, this would need to be translated to MongoDB queries
+                # For now, return empty list as most config operations use SQL-style queries
+                return []
+            
+            async with self.session_factory() as session:
+                result = await session.execute(text(query), params or {})
+                if result.returns_rows:
+                    rows = result.fetchall()
+                    return [dict(row._mapping) for row in rows]
+                else:
+                    await session.commit()
+                    return []
+                    
+        except Exception as e:
+            logger.error(f"Error executing query: {e}")
+            raise

@@ -33,7 +33,14 @@ from core.config import Settings, get_settings
 from core.database import DatabaseManager
 from core.logging import setup_logging, get_logger
 from core.process_manager import ProcessManager
-from core.ai_loop import ai_loop
+# AI loop import - optional for basic functionality
+try:
+    from core.ai_loop import ai_loop
+    AI_LOOP_AVAILABLE = True
+except ImportError as e:
+    print(f"AI loop not available: {e}")
+    AI_LOOP_AVAILABLE = False
+    ai_loop = None
 from core.redis_manager import RedisManager
 from services.web_interface import create_app
 from services.ssh_server import SSHServer
@@ -113,20 +120,26 @@ async def run_main_loop(settings: Settings, process_manager: ProcessManager):
         # Start SSH server
         await start_ssh_server(settings, process_manager)
         
-        # Start the AI loop (main program logic)
-        ai_task = asyncio.create_task(ai_loop(process_manager, settings))
+        # Start the AI loop (main program logic) if available
+        ai_task = None
+        if AI_LOOP_AVAILABLE and ai_loop:
+            ai_task = asyncio.create_task(ai_loop(process_manager, settings))
+            logger.info("AI loop started")
+        else:
+            logger.warning("AI loop not available, running in basic mode")
         
         # Wait for shutdown signal
         await _shutdown_event.wait()
         
         logger.info("Shutdown signal received, stopping services...")
         
-        # Cancel AI loop
-        ai_task.cancel()
-        try:
-            await ai_task
-        except asyncio.CancelledError:
-            pass
+        # Cancel AI loop if running
+        if ai_task:
+            ai_task.cancel()
+            try:
+                await ai_task
+            except asyncio.CancelledError:
+                pass
         
         # Stop process manager
         await process_manager.shutdown()
