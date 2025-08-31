@@ -743,18 +743,103 @@ User query: {user_input}"""
     
     async def _start_discovery(self, ip: str, port: int, ae_title: str) -> str:
         """Start DICOM discovery"""
-        # This will be implemented when we create the DICOM services
-        return f"Starting DICOM discovery on {ip}:{port} (AE: {ae_title}) - Implementation pending"
+        try:
+            # Import DICOM discovery service
+            from ..services.dicom.discovery import DICOMDiscoveryService
+            
+            # Create discovery service instance
+            discovery_service = DICOMDiscoveryService(self.db_manager, self.settings)
+            
+            # Discover the specified host
+            result = await discovery_service.discover_single_host(ip, port, ae_title)
+            
+            if result:
+                return f"✅ DICOM service discovered at {ip}:{port}\n" + \
+                       f"AE Title: {result['ae_title']}\n" + \
+                       f"Response Time: {result['response_time']:.3f}s\n" + \
+                       f"Service Type: {result['service_type']}"
+            else:
+                return f"❌ No DICOM service found at {ip}:{port} (AE: {ae_title})"
+                
+        except Exception as e:
+            logger.error(f"Error during DICOM discovery: {e}")
+            return f"❌ DICOM discovery failed: {str(e)}"
     
     async def _start_scp(self, port: int, ae_title: str) -> str:
         """Start DICOM SCP listener"""
-        # This will be implemented when we create the DICOM services
-        return f"Starting DICOM SCP on port {port} (AE: {ae_title}) - Implementation pending"
+        try:
+            # Import DICOM SCP service
+            from ..services.dicom.scp import DICOMSCPService, create_dicom_tables
+            
+            # Ensure database tables exist
+            await create_dicom_tables(self.db_manager)
+            
+            # Create SCP service instance
+            scp_service = DICOMSCPService(self.db_manager, self.settings)
+            
+            # Configure SCP
+            config = {
+                'port': port,
+                'ae_title': ae_title,
+                'output_directory': self.settings.dicom.storage_directory,
+                'max_pdu': self.settings.dicom.max_pdu,
+                'acse_timeout': self.settings.dicom.acse_timeout,
+                'dimse_timeout': self.settings.dicom.dimse_timeout,
+                'socket_timeout': self.settings.dicom.socket_timeout
+            }
+            
+            if not scp_service.configure(config):
+                return f"❌ Failed to configure DICOM SCP service"
+            
+            # Start the service
+            if scp_service.start():
+                return f"✅ DICOM SCP started successfully\n" + \
+                       f"Port: {port}\n" + \
+                       f"AE Title: {ae_title}\n" + \
+                       f"Storage Directory: {config['output_directory']}"
+            else:
+                return f"❌ Failed to start DICOM SCP service"
+                
+        except Exception as e:
+            logger.error(f"Error starting DICOM SCP: {e}")
+            return f"❌ DICOM SCP startup failed: {str(e)}"
     
     async def _start_scu(self, target_ip: str, target_port: int, target_ae: str) -> str:
         """Start DICOM SCU operations"""
-        # This will be implemented when we create the DICOM services
-        return f"Starting DICOM SCU to {target_ip}:{target_port} (AE: {target_ae}) - Implementation pending"
+        try:
+            # Import DICOM SCU service
+            from ..services.dicom.scu import DICOMSCUService
+            
+            # Create SCU service instance
+            scu_service = DICOMSCUService(self.db_manager, self.settings)
+            
+            # Configure SCU
+            config = {
+                'target_ip': target_ip,
+                'target_port': target_port,
+                'target_ae_title': target_ae,
+                'ae_title': self.settings.dicom.our_ae_title,
+                'max_pdu': self.settings.dicom.max_pdu,
+                'acse_timeout': self.settings.dicom.acse_timeout,
+                'dimse_timeout': self.settings.dicom.dimse_timeout,
+                'network_timeout': self.settings.dicom.socket_timeout
+            }
+            
+            if not scu_service.configure(config):
+                return f"❌ Failed to configure DICOM SCU service"
+            
+            # Start the service
+            if scu_service.start():
+                return f"✅ DICOM SCU configured successfully\n" + \
+                       f"Target: {target_ip}:{target_port}\n" + \
+                       f"Target AE: {target_ae}\n" + \
+                       f"Ready for C-FIND, C-STORE, and C-MOVE operations"
+            else:
+                return f"❌ Failed to start DICOM SCU service"
+                
+        except Exception as e:
+            logger.error(f"Error starting DICOM SCU: {e}")
+            return f"❌ DICOM SCU startup failed: {str(e)}"
     
     async def _execute_select_query(self, query: str) -> str:
         """Execute a SELECT query"""
@@ -1036,7 +1121,7 @@ The AI will interpret your intent and execute the appropriate actions.
     
     async def _start_parse(self, directory: str = ".") -> str:
         """
-        Start DICOM parsing operation
+        Start DICOM parsing operation using the comprehensive scanner service
         
         Args:
             directory: Directory to parse for DICOM files
@@ -1051,65 +1136,41 @@ The AI will interpret your intent and execute the appropriate actions.
             if not os.path.isdir(directory):
                 return f"Path is not a directory: {directory}"
             
-            # Look for DICOM files
-            dicom_files = []
-            potential_dicom_extensions = ['.dcm', '.dicom', '.ima', '.img', '']
+            # Import DICOM scanner service
+            from ..services.dicom.scanner import DICOMDirectoryScanner
             
-            for root, dirs, files in os.walk(directory):
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    _, ext = os.path.splitext(file)
-                    
-                    # Check if file might be DICOM
-                    if ext.lower() in potential_dicom_extensions or not ext:
-                        try:
-                            # Basic DICOM header check (look for DICM magic bytes)
-                            with open(file_path, 'rb') as f:
-                                f.seek(128)  # DICOM preamble is 128 bytes
-                                magic = f.read(4)
-                                if magic == b'DICM':
-                                    dicom_files.append(file_path)
-                        except (OSError, IOError):
-                            # Skip files we can't read
-                            continue
+            # Create scanner instance
+            scanner = DICOMDirectoryScanner(self.db_manager, self.settings)
             
-            result = []
-            result.append(f"DICOM parsing complete for: {directory}")
-            result.append(f"Found {len(dicom_files)} DICOM files")
+            # Start scanning the directory
+            result = await scanner.scan_directory(directory)
             
-            if dicom_files:
-                result.append("\nFirst 10 DICOM files found:")
-                for dicom_file in dicom_files[:10]:
-                    # Get relative path for cleaner display
-                    rel_path = os.path.relpath(dicom_file, directory)
-                    file_size = os.path.getsize(dicom_file)
-                    result.append(f"  {rel_path} ({file_size} bytes)")
-                
-                if len(dicom_files) > 10:
-                    result.append(f"  ... and {len(dicom_files) - 10} more files")
+            # Format results
+            output = []
+            output.append(f"✅ DICOM directory scan complete for: {directory}")
+            output.append(f"📁 Files processed: {result['files_processed']}")
+            output.append(f"📋 DICOM files found: {result['dicom_files']}")
+            output.append(f"🔍 DICONDE files found: {result['diconde_files']}")
+            output.append(f"🎯 DICOS files found: {result['dicos_files']}")
+            output.append(f"❌ Errors encountered: {result['errors']}")
+            output.append(f"⏱️ Scan duration: {result['duration']:.2f} seconds")
+            
+            if result['errors'] > 0:
+                output.append(f"\n⚠️  Some files had errors during processing.")
+                output.append(f"Check logs for detailed error information.")
+            
+            if result['dicom_files'] + result['diconde_files'] + result['dicos_files'] > 0:
+                output.append(f"\n📊 All metadata has been stored in the database.")
+                output.append(f"Use SQL queries to explore the extracted metadata.")
             else:
-                result.append("\nNo DICOM files found in the specified directory.")
-                result.append("Note: This is a basic check for DICM magic bytes.")
-                result.append("For detailed DICOM parsing, use pydicom library.")
+                output.append(f"\n💡 No DICOM/DICONDE/DICOS files found.")
+                output.append(f"Supported formats: .dcm, .dicom, .ima, .img, and files without extensions.")
             
-            # Store parse results in database
-            parse_data = {
-                'directory': directory,
-                'dicom_files_count': len(dicom_files),
-                'dicom_files': dicom_files[:100],  # Store first 100 files
-                'parsed_at': datetime.now().isoformat()
-            }
-            
-            await self.db_manager.execute_query(
-                "INSERT OR REPLACE INTO config (name, value) VALUES (?, ?)",
-                (f"PARSE_{directory.replace('/', '_')}", json.dumps(parse_data))
-            )
-            
-            return "\n".join(result)
+            return "\n".join(output)
             
         except Exception as e:
             logger.error(f"Error in DICOM parsing: {e}")
-            return f"DICOM parsing error: {str(e)}"
+            return f"❌ DICOM parsing failed: {str(e)}"
 
 
 async def ai_loop(process_manager: ProcessManager, settings: Settings) -> None:
