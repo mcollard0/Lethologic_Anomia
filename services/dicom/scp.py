@@ -1,7 +1,6 @@
 """
 DICOM SCP Service
 
-This is the Python equivalent of DICOMSCP.cpp from the original C++ version.
 Implements a DICOM Storage Service Class Provider (SCP) that can receive
 DICOM images and store them in the database and filesystem.
 """
@@ -34,7 +33,7 @@ class DICOMSCPService:
     """
     DICOM Storage SCP Service
     
-    Equivalent to the C++ DICOMSCP class. Provides a DICOM listener that can:
+    Provides a DICOM listener that can:
     - Accept associations from DICOM SCUs
     - Store received DICOM images to filesystem
     - Store DICOM metadata to database
@@ -114,7 +113,7 @@ class DICOMSCPService:
             # Initialize Application Entity
             self.ae = AE(ae_title=self.config['ae_title'])
             
-            # Add supported storage SOP classes (matching C++ version)
+            # Add supported storage SOP classes
             storage_sops = self._get_supported_storage_sops()
             for sop_class in storage_sops:
                 self.ae.add_supported_context(sop_class)
@@ -138,7 +137,6 @@ class DICOMSCPService:
     
     def _get_supported_storage_sops(self) -> List:
         """Get list of supported storage SOP classes"""
-        # This matches the knownAbstractSyntaxes from the C++ version
         return [
             # Verification
             VerificationSOPClass,
@@ -274,8 +272,19 @@ class DICOMSCPService:
             # Save the DICOM file
             ds.save_as(str(file_path), write_like_original=False)
             
-            # Store metadata in database
-            await self._store_metadata_in_database(ds, str(file_path))
+            # Store metadata in database (sync call for now)
+            # TODO: Make this async in a proper event loop context
+            try:
+                import asyncio
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # Schedule for later execution
+                    asyncio.create_task(self._store_metadata_in_database(ds, str(file_path)))
+                else:
+                    # Run in new event loop
+                    asyncio.run(self._store_metadata_in_database(ds, str(file_path)))
+            except Exception as db_error:
+                logger.warning(f"Failed to store metadata: {db_error}")
             
             self.files_stored += 1
             logger.info(f"Stored DICOM file: {file_path}")

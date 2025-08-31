@@ -1,7 +1,6 @@
 """
 DICOM Search Service
 
-This is the Python equivalent of DICOMDaySearch.cpp from the original C++ version.
 Implements multi-threaded DICOM study discovery and search operations.
 """
 
@@ -26,7 +25,7 @@ class DICOMSearchService:
     """
     DICOM Search Service (Multi-threaded)
     
-    Equivalent to the C++ DICOMDaySearchMT namespace. Provides functionality to:
+    Provides functionality to:
     - Search for studies across multiple days/date ranges
     - Perform multi-threaded queries for improved performance
     - Store discovered studies for later processing

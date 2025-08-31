@@ -1,7 +1,6 @@
 """
 DICOM SCU Service
 
-This is the Python equivalent of DICOMSCU.cpp from the original C++ version.
 Implements a DICOM Service Class User (SCU) that can perform:
 - C-FIND: Search for studies, series, and images
 - C-STORE: Send DICOM images to other systems
@@ -31,7 +30,7 @@ class DICOMSCUService:
     """
     DICOM Service Class User (SCU) Service
     
-    Equivalent to the C++ DICOMSCU class. Provides functionality to:
+    Provides functionality to:
     - Connect to remote DICOM servers
     - Perform C-FIND operations (search)
     - Perform C-STORE operations (send)

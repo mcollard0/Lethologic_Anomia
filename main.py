@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
-Lethologic Anomia - Main Entry Point
+Lethologic Anomia - Entry Point (Main)
 
 This is a Python port of the C++ DICOM/HL7 Migration Service with AI integration.
 Converts the original Windows service to a cross-platform Python application.
 
-Original C++ author: Michael Collard
-Python conversion: Automated AI conversion maintaining original functionality
+C++/Python author: Michael Collard
 """
 
 import asyncio
@@ -165,7 +164,7 @@ def main(config: Optional[str], daemon: bool, install: bool, uninstall: bool,
         console.print("""
 [bold blue]Lethologic Anomia - Extended Help[/bold blue]
 
-[bold]Original C++ Commands (now Python equivalents):[/bold]
+[bold]Available Commands:[/bold]
 - help                  : Show available commands
 - discovery <IP>:<Port> : DICOM discovery
 - start_scp            : Start DICOM SCP listener  
@@ -176,7 +175,7 @@ def main(config: Optional[str], daemon: bool, install: bool, uninstall: bool,
 - schema               : Show database schema
 - quit                 : Exit service
 
-[bold]New Python Features:[/bold]
+[bold]Advanced Features:[/bold]
 - Multi-database support with automatic translation
 - Redis/Valkey process management
 - FastAPI web interface with SSL

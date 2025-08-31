@@ -82,8 +82,8 @@ class DICOMSettings(BaseSettings):
     """DICOM service configuration"""
     
     # SCP (Server) settings
-    scp_port: int = Field(default=104, env="DICOM_SCP_PORT")
-    scp_ssl_port: int = Field(default=11112, env="DICOM_SCP_SSL_PORT") 
+    scp_port: int = Field(default=50104, env="DICOM_SCP_PORT")
+    scp_ssl_port: int = Field(default=50112, env="DICOM_SCP_SSL_PORT")
     our_ae_title: str = Field(default="MIGRATION_SCP", env="DICOM_OUR_AE_TITLE")
     
     # Connection settings
@@ -109,7 +109,7 @@ class HL7Settings(BaseSettings):
     """HL7/FHIR configuration"""
     
     # HL7 settings
-    hl7_port: int = Field(default=2575, env="HL7_PORT") 
+    hl7_port: int = Field(default=50575, env="HL7_PORT")
     hl7_enabled: bool = Field(default=True, env="HL7_ENABLED")
     
     # FHIR settings  
@@ -122,7 +122,7 @@ class HL7Settings(BaseSettings):
     
     # Passthrough settings
     passthrough_enabled: bool = Field(default=False, env="HL7_PASSTHROUGH_ENABLED")
-    passthrough_port: int = Field(default=2576, env="HL7_PASSTHROUGH_PORT")
+    passthrough_port: int = Field(default=50576, env="HL7_PASSTHROUGH_PORT")
 
 
 class AISettings(BaseSettings):
