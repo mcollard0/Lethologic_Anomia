@@ -34,3 +34,11 @@ Thumbs.db
 # Configuration files with secrets
 config.json
 .env
+
+# DICOM files and test data
+etc/
+generated_dicom/
+*.dcm
+
+# Virtual environments
+venv_new/
