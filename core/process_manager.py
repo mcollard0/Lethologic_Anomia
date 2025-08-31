@@ -114,7 +114,7 @@ class ProcessManager:
     async def initialize(self) -> None:
         """Initialize the process manager"""
         try:
-            # Register this manager process in Redis
+            # Register this manager process in Redis (if available)
             await self.redis_manager.register_process(
                 "process_manager",
                 {"manager_id": self._manager_id}
@@ -124,8 +124,9 @@ class ProcessManager:
             self._heartbeat_task = asyncio.create_task(self._heartbeat_worker())
             self._monitoring_task = asyncio.create_task(self._monitoring_worker())
             
-            # Initialize log polling service
-            if self.settings.redis_url and (self.settings.log_file or self.db_manager):
+            # Initialize log polling service if Redis is connected
+            redis_connected = await self.redis_manager.is_connected()
+            if redis_connected and (self.settings.log_file or self.db_manager):
                 self._log_polling_service = LogPollingService(
                     redis_manager=self.redis_manager,
                     db_manager=self.db_manager,
@@ -135,6 +136,8 @@ class ProcessManager:
                 )
                 await self._log_polling_service.start()
                 logger.info("Log polling service started")
+            elif not redis_connected:
+                logger.info("Log polling service disabled (Redis not available)")
             
             self._running = True
             logger.info("Process manager initialized successfully")
@@ -286,12 +289,13 @@ class ProcessManager:
             # Remove from tracking
             self.process_types[process_info.process_type].discard(process_id)
             
-            # Unregister from Redis
+            # Unregister from Redis (if available)
             try:
-                await self.redis_manager.redis_client.hdel(
-                    "migration:processes",
-                    f"{process_info.process_type.value}_{process_id}"
-                )
+                if self.redis_manager.redis_available and self.redis_manager.redis_client:
+                    await self.redis_manager.redis_client.hdel(
+                        "migration:processes",
+                        f"{process_info.process_type.value}_{process_id}"
+                    )
             except Exception as e:
                 logger.warning(f"Failed to unregister process from Redis: {e}")
             

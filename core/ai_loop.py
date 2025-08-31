@@ -14,6 +14,8 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List
 
 import openai
+import anthropic
+import requests
 from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM
 from transformers import WhisperProcessor, WhisperForConditionalGeneration
 import torch
@@ -45,12 +47,19 @@ class AIService:
         self.aggression_level = 1
         self.trusted_threshold = 5
         
-        # AI Models
+        # AI Provider clients
         self.openai_client: Optional[openai.AsyncOpenAI] = None
+        self.anthropic_client: Optional[anthropic.AsyncAnthropic] = None
+        self.xai_client: Optional[openai.AsyncOpenAI] = None  # XAI uses OpenAI-compatible API
         self.local_model = None
         self.tokenizer = None
+        
+        # Speech models
         self.speech_model = None
         self.tts_engine = None
+        
+        # Provider availability tracking
+        self.available_providers = []
         
         # Response tracking
         self.last_responses: List[str] = [""] * 10
@@ -67,14 +76,10 @@ class AIService:
     async def initialize(self) -> None:
         """Initialize AI models and services"""
         try:
-            # Initialize OpenAI if API key is available
-            if self.settings.openai_api_key:
-                self.openai_client = openai.AsyncOpenAI(
-                    api_key=self.settings.openai_api_key
-                )
-                logger.info("OpenAI client initialized")
+            # Initialize AI providers in priority order
+            await self._initialize_ai_providers()
             
-            # Initialize local HuggingFace model for offline operation
+            # Initialize local HuggingFace model (primary)
             await self._initialize_local_model()
             
             # Initialize speech models
@@ -84,10 +89,60 @@ class AIService:
             await self._load_saved_state()
             
             logger.info("AI Service initialization complete")
+            logger.info(f"Available AI providers: {', '.join(self.available_providers)}")
             
         except Exception as e:
             logger.error(f"Failed to initialize AI Service: {e}")
             raise
+    
+    async def _initialize_ai_providers(self) -> None:
+        """Initialize all AI providers based on priority order"""
+        self.available_providers = []
+        
+        # Initialize providers in priority order from settings
+        for provider in self.settings.ai.ai_providers:
+            try:
+                if provider == "huggingface_local":
+                    # Local HuggingFace model (highest priority, free)
+                    # This will be initialized in _initialize_local_model()
+                    self.available_providers.append("huggingface_local")
+                    logger.info("Local Hugging Face model configured (priority #1)")
+                    
+                elif provider == "xai" and self.settings.ai.xai_api_key:
+                    # XAI uses OpenAI-compatible API
+                    self.xai_client = openai.AsyncOpenAI(
+                        api_key=self.settings.ai.xai_api_key,
+                        base_url=self.settings.ai.xai_base_url
+                    )
+                    self.available_providers.append("xai")
+                    logger.info("XAI (Grok) client initialized from environment variable")
+                    
+                elif provider == "anthropic" and self.settings.ai.anthropic_api_key:
+                    self.anthropic_client = anthropic.AsyncAnthropic(
+                        api_key=self.settings.ai.anthropic_api_key
+                    )
+                    self.available_providers.append("anthropic")
+                    logger.info("Anthropic client initialized from environment variable")
+                    
+                elif provider == "openai" and self.settings.ai.openai_api_key:
+                    self.openai_client = openai.AsyncOpenAI(
+                        api_key=self.settings.ai.openai_api_key
+                    )
+                    self.available_providers.append("openai")
+                    logger.info("OpenAI client initialized from environment variable")
+                    
+                elif provider == "huggingface_api" and self.settings.ai.huggingface_api_key:
+                    # Hugging Face API (lowest priority, paid service)
+                    self.available_providers.append("huggingface_api")
+                    logger.info("Hugging Face API configured from environment variable (paid service - last priority)")
+                    
+                elif provider in ["xai", "anthropic", "openai", "huggingface_api"]:
+                    # Provider requested but no API key found
+                    logger.info(f"Provider {provider} requested but no API key found in environment variables")
+                    
+            except Exception as e:
+                logger.warning(f"Failed to initialize {provider}: {e}")
+                continue
     
     async def _initialize_local_model(self) -> None:
         """Initialize local HuggingFace model for offline operation"""
@@ -290,18 +345,38 @@ class AIService:
         return None
     
     async def _get_ai_response(self, user_input: str) -> str:
-        """Get response from AI model (OpenAI API or local model)"""
-        try:
-            if self.openai_client:
-                return await self._get_openai_response(user_input)
-            elif self.local_model:
-                return await self._get_local_model_response(user_input)
-            else:
-                return "No AI model available. Please check your configuration."
+        """Get response from AI model using fallback priority order"""
+        last_error = None
+        
+        # Try each available provider in priority order
+        for provider in self.available_providers:
+            try:
+                if provider == "huggingface_api":
+                    response = await self._get_huggingface_api_response(user_input)
+                elif provider == "huggingface_local":
+                    response = await self._get_local_model_response(user_input)
+                elif provider == "xai":
+                    response = await self._get_xai_response(user_input)
+                elif provider == "anthropic":
+                    response = await self._get_anthropic_response(user_input)
+                elif provider == "openai":
+                    response = await self._get_openai_response(user_input)
+                else:
+                    continue
                 
-        except Exception as e:
-            logger.error(f"Error getting AI response: {e}")
-            return f"AI service error: {str(e)}"
+                if response and response.strip():
+                    logger.info(f"Successfully got response from {provider}")
+                    return response
+                    
+            except Exception as e:
+                logger.warning(f"Provider {provider} failed: {e}")
+                last_error = e
+                continue
+        
+        # If all providers failed, return error
+        error_msg = f"All AI providers failed. Last error: {last_error}" if last_error else "No AI providers available."
+        logger.error(error_msg)
+        return error_msg
     
     async def _get_openai_response(self, user_input: str) -> str:
         """Get response from OpenAI API"""
@@ -345,9 +420,111 @@ class AIService:
             logger.error(f"OpenAI API error: {e}")
             return f"OpenAI API error: {str(e)}"
     
+    async def _get_xai_response(self, user_input: str) -> str:
+        """Get response from XAI (Grok) API"""
+        try:
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are Grok, an AI assistant for a medical imaging migration service. "
+                        "You help with DICOM/HL7 operations, database queries, and system management. "
+                        "You can call functions to perform actions. Be witty, engaging, but professional."
+                    )
+                },
+                {"role": "user", "content": user_input}
+            ]
+            
+            # XAI uses OpenAI-compatible API but with different model names
+            response = await self.xai_client.chat.completions.create(
+                model="grok-beta",  # XAI's model name
+                messages=messages,
+                max_tokens=512,
+                temperature=0.7
+            )
+            
+            message = response.choices[0].message
+            return message.content if message.content else "I received an empty response from Grok."
+            
+        except Exception as e:
+            logger.error(f"XAI API error: {e}")
+            raise  # Re-raise to trigger fallback
+    
+    async def _get_anthropic_response(self, user_input: str) -> str:
+        """Get response from Anthropic Claude API"""
+        try:
+            response = await self.anthropic_client.messages.create(
+                model="claude-3-sonnet-20240229",
+                max_tokens=512,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": f"""
+You are Claude, an AI assistant for a medical imaging migration service. 
+You help with DICOM/HL7 operations, database queries, and system management.
+Be helpful, accurate, and professional.
+
+User query: {user_input}"""
+                    }
+                ]
+            )
+            
+            return response.content[0].text if response.content else "I received an empty response from Claude."
+            
+        except Exception as e:
+            logger.error(f"Anthropic API error: {e}")
+            raise  # Re-raise to trigger fallback
+    
+    async def _get_huggingface_api_response(self, user_input: str) -> str:
+        """Get response from Hugging Face API"""
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.settings.huggingface_api_key}",
+                "Content-Type": "application/json"
+            }
+            
+            # Use a conversational model available on HF API
+            api_url = "https://api-inference.huggingface.co/models/microsoft/DialoGPT-large"
+            
+            payload = {
+                "inputs": user_input,
+                "parameters": {
+                    "max_new_tokens": 250,
+                    "temperature": 0.7,
+                    "do_sample": True
+                }
+            }
+            
+            async with requests.Session() as session:
+                response = session.post(api_url, headers=headers, json=payload)
+                
+            if response.status_code == 200:
+                result = response.json()
+                if isinstance(result, list) and len(result) > 0:
+                    generated_text = result[0].get("generated_text", "")
+                    # Remove the input from the generated text
+                    if generated_text.startswith(user_input):
+                        response_text = generated_text[len(user_input):].strip()
+                    else:
+                        response_text = generated_text
+                    
+                    return response_text if response_text else "I'm not sure how to respond to that."
+                else:
+                    return "Received unexpected response format from Hugging Face API."
+            else:
+                logger.error(f"Hugging Face API error: {response.status_code} - {response.text}")
+                raise Exception(f"API request failed with status {response.status_code}")
+                
+        except Exception as e:
+            logger.error(f"Hugging Face API error: {e}")
+            raise  # Re-raise to trigger fallback
+    
     async def _get_local_model_response(self, user_input: str) -> str:
         """Get response from local HuggingFace model"""
         try:
+            if not self.local_model or not self.tokenizer:
+                raise Exception("Local model not initialized")
+                
             # Encode input
             inputs = self.tokenizer.encode(user_input + self.tokenizer.eos_token, return_tensors='pt')
             
@@ -372,7 +549,7 @@ class AIService:
             
         except Exception as e:
             logger.error(f"Local model error: {e}")
-            return f"Local model error: {str(e)}"
+            raise  # Re-raise to trigger fallback
     
     def _get_function_definitions(self) -> List[Dict[str, Any]]:
         """Get OpenAI function definitions for available commands"""

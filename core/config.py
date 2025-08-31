@@ -128,14 +128,34 @@ class HL7Settings(BaseSettings):
 class AISettings(BaseSettings):
     """AI/ML configuration"""
     
-    # API Keys
-    openai_api_key: Optional[str] = Field(default=None, env="OPENAI_API_KEY")
+    # API Keys (loaded from environment variables for security)
+    # Note: These should NEVER be set in code - always use env vars!
+    xai_api_key: Optional[str] = Field(default=None, env="XAI_API_KEY")
     anthropic_api_key: Optional[str] = Field(default=None, env="ANTHROPIC_API_KEY")
+    openai_api_key: Optional[str] = Field(default=None, env="OPENAI_API_KEY")
     huggingface_api_key: Optional[str] = Field(default=None, env="HUGGINGFACE_API_KEY")
     
+    # Provider priorities (1=highest priority)
+    # Local HuggingFace first (free), then XAI, Anthropic, OpenAI, finally HF API (paid)
+    ai_providers: List[str] = Field(
+        default=["huggingface_local", "xai", "anthropic", "openai", "huggingface_api"],
+        env="AI_PROVIDERS",
+        description="AI provider priority order - local first, paid APIs last"
+    )
+    
     # Model selection
-    default_model: str = Field(default="gpt-3.5-turbo", env="AI_DEFAULT_MODEL")
-    local_model: str = Field(default="microsoft/DialoGPT-medium", env="AI_LOCAL_MODEL")
+    default_model: str = Field(default="microsoft/DialoGPT-large", env="AI_DEFAULT_MODEL")
+    local_model: str = Field(default="microsoft/DialoGPT-large", env="AI_LOCAL_MODEL")
+    
+    # Provider-specific models
+    huggingface_model: str = Field(default="microsoft/DialoGPT-large", env="HUGGINGFACE_MODEL")
+    xai_model: str = Field(default="grok-beta", env="XAI_MODEL")
+    anthropic_model: str = Field(default="claude-3-haiku-20240307", env="ANTHROPIC_MODEL")
+    openai_model: str = Field(default="gpt-3.5-turbo", env="OPENAI_MODEL")
+    
+    # API endpoints
+    xai_base_url: str = Field(default="https://api.x.ai/v1", env="XAI_BASE_URL")
+    huggingface_base_url: str = Field(default="https://api-inference.huggingface.co", env="HF_BASE_URL")
     
     # Speech settings
     speech_enabled: bool = Field(default=False, env="SPEECH_ENABLED")

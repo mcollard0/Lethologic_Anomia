@@ -254,8 +254,14 @@ class DatabaseManager:
     async def _initialize_sql(self) -> None:
         """Initialize SQL database connection"""
         # Create async engine
+        # Use aiosqlite driver for SQLite for async support
+        if self.db_type == 'sqlite':
+            database_url = self.database_url.replace('sqlite://', 'sqlite+aiosqlite://', 1)
+        else:
+            database_url = self.database_url
+
         self.engine = create_async_engine(
-            self.database_url,
+            database_url,
             echo=False,  # Set to True for SQL debugging
             pool_pre_ping=True,
             pool_recycle=3600

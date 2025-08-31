@@ -70,10 +70,15 @@ async def initialize_services(settings: Settings) -> ProcessManager:
     await db_manager.initialize()
     logger.info("Database initialized")
     
-    # Initialize Redis/Valkey
-    redis_manager = RedisManager(settings.redis_url)
-    await redis_manager.initialize()
-    logger.info("Redis/Valkey initialized")
+    # Initialize Redis/Valkey with fallbacks
+    redis_manager = RedisManager(settings.redis_url, db_manager)
+    redis_available = await redis_manager.initialize()
+    
+    if redis_available:
+        logger.info("Redis/Valkey connected successfully")
+    else:
+        logger.warning("Redis/Valkey not available - using fallback mechanisms")
+        logger.info("Process management will use database and in-memory fallbacks")
     
     # Initialize process manager
     process_manager = ProcessManager(db_manager, redis_manager, settings)
