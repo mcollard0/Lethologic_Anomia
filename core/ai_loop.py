@@ -447,6 +447,26 @@ class AIService:
                     },
                     "required": ["query"]
                 }
+            },
+            {
+                "name": "fizzbuzz",
+                "description": "Play the FizzBuzz game up to a specified number",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "max_number": {"type": "integer", "description": "Maximum number to count to (default 100)"}
+                    }
+                }
+            },
+            {
+                "name": "math_quiz",
+                "description": "Generate a simple math quiz",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "difficulty": {"type": "string", "description": "Difficulty level: easy, medium, hard"}
+                    }
+                }
             }
         ]
     
@@ -484,6 +504,12 @@ class AIService:
                 
             elif function_name == "select_query":
                 return await self._execute_select_query(arguments.get("query", ""))
+                
+            elif function_name == "fizzbuzz":
+                return await self._fizzbuzz_game(arguments.get("max_number", 100))
+                
+            elif function_name == "math_quiz":
+                return await self._math_quiz(arguments.get("difficulty", "easy"))
                 
             else:
                 return f"Function '{function_name}' is not implemented yet."
@@ -612,6 +638,125 @@ The AI will interpret your intent and execute the appropriate actions.
         except Exception as e:
             logger.error(f"Error getting schema: {e}")
             return f"Schema error: {str(e)}"
+    
+    async def _fizzbuzz_game(self, max_number: int) -> str:
+        """
+        Play the classic FizzBuzz game
+        
+        Args:
+            max_number: Maximum number to count to (default 100)
+            
+        Returns:
+            FizzBuzz game output
+        """
+        try:
+            if max_number <= 0 or max_number > 1000:
+                return "Please provide a number between 1 and 1000."
+            
+            result = []
+            result.append(f"Playing FizzBuzz up to {max_number}:\n")
+            
+            for i in range(1, max_number + 1):
+                if i % 15 == 0:
+                    result.append("FizzBuzz")
+                elif i % 3 == 0:
+                    result.append("Fizz")
+                elif i % 5 == 0:
+                    result.append("Buzz")
+                else:
+                    result.append(str(i))
+                
+                # Add line breaks every 10 items for readability
+                if i % 10 == 0 and i < max_number:
+                    result.append("\n")
+                elif i < max_number:
+                    result.append(", ")
+            
+            return "".join(result)
+            
+        except Exception as e:
+            logger.error(f"Error in FizzBuzz game: {e}")
+            return f"FizzBuzz game error: {str(e)}"
+    
+    async def _math_quiz(self, difficulty: str = "easy") -> str:
+        """
+        Generate a simple math quiz
+        
+        Args:
+            difficulty: Difficulty level (easy, medium, hard)
+            
+        Returns:
+            Math quiz problem and answer
+        """
+        try:
+            difficulty = difficulty.lower()
+            
+            if difficulty == "easy":
+                # Single digit addition and subtraction
+                a = random.randint(1, 9)
+                b = random.randint(1, 9)
+                operation = random.choice(['+', '-'])
+                if operation == '+' or a >= b:
+                    answer = a + b if operation == '+' else a - b
+                else:
+                    a, b = b, a  # Ensure positive result
+                    answer = a - b
+                problem = f"{a} {operation} {b}"
+                
+            elif difficulty == "medium":
+                # Two digit numbers with multiplication and division
+                if random.choice([True, False]):  # Multiplication
+                    a = random.randint(2, 12)
+                    b = random.randint(2, 12)
+                    operation = '×'
+                    answer = a * b
+                    problem = f"{a} {operation} {b}"
+                else:  # Division
+                    answer = random.randint(2, 12)
+                    b = random.randint(2, 12)
+                    a = answer * b
+                    operation = '÷'
+                    problem = f"{a} {operation} {b}"
+                    
+            elif difficulty == "hard":
+                # More complex operations
+                operation_type = random.choice(['power', 'sqrt', 'complex'])
+                if operation_type == 'power':
+                    base = random.randint(2, 10)
+                    exp = random.randint(2, 4)
+                    answer = base ** exp
+                    problem = f"{base}^{exp}"
+                elif operation_type == 'sqrt':
+                    answer = random.randint(1, 15)
+                    square = answer ** 2
+                    problem = f"√{square}"
+                else:  # complex arithmetic
+                    a = random.randint(5, 25)
+                    b = random.randint(2, 8)
+                    c = random.randint(1, 10)
+                    answer = (a * b) + c
+                    problem = f"({a} × {b}) + {c}"
+            else:
+                return "Invalid difficulty level. Please use 'easy', 'medium', or 'hard'."
+            
+            # Store the quiz in database for potential follow-up
+            quiz_data = {
+                'problem': problem,
+                'answer': str(answer),
+                'difficulty': difficulty,
+                'created_at': datetime.now().isoformat()
+            }
+            
+            await self.db_manager.execute_query(
+                "INSERT OR REPLACE INTO config (name, value) VALUES (?, ?)",
+                ("LAST_MATH_QUIZ", json.dumps(quiz_data))
+            )
+            
+            return f"Math Quiz ({difficulty.capitalize()} level):\n\nSolve: {problem}\n\n(Answer: {answer})"
+            
+        except Exception as e:
+            logger.error(f"Error generating math quiz: {e}")
+            return f"Math quiz error: {str(e)}"
 
 
 async def ai_loop(process_manager: ProcessManager, settings: Settings) -> None:
