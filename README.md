@@ -32,19 +32,19 @@ A comprehensive Python-based medical imaging migration service with AI integrati
 
 **Method 1: Using the convenience script (recommended)**
 ```bash
-./run.sh --help              # Show help
-./run.sh --help-extended     # Show detailed help
-./run.sh --debug             # Run in debug mode
+./lethologic_anomia.sh --help              # Show help
+./lethologic_anomia.sh --help-extended     # Show detailed help
+./lethologic_anomia.sh --debug             # Run in debug mode
 ```
 
 **Method 2: Direct execution with virtual environment**
 ```bash
-source venv_new/bin/activate && python main.py --help
+source venv_new/bin/activate && python lethologic_anomia.py --help
 ```
 
 **Method 3: Using virtual environment Python directly**
 ```bash
-./venv_new/bin/python main.py --help
+./venv_new/bin/python lethologic_anomia.py --help
 ```
 
 ## Features
@@ -133,18 +133,18 @@ Lethologic Anomia/
 
 ### Running in Debug Mode
 ```bash
-./run.sh --debug
+./lethologic_anomia.sh --debug
 ```
 
 ### Service Installation
 ```bash
-sudo ./run.sh --install      # Install as system service
-sudo ./run.sh --uninstall    # Remove system service
+sudo ./lethologic_anomia.sh --install      # Install as system service
+sudo ./lethologic_anomia.sh --uninstall    # Remove system service
 ```
 
 ### Daemon Mode
 ```bash
-./run.sh --daemon           # Run as background daemon
+./lethologic_anomia.sh --daemon           # Run as background daemon
 ```
 
 ## Troubleshooting
@@ -160,7 +160,7 @@ sudo ./run.sh --uninstall    # Remove system service
 - Recreate venv: `rm -rf venv_new && python3 -m venv venv_new`
 
 **Permission errors**
-- Make run.sh executable: `chmod +x run.sh`
+- Make lethologic_anomia.sh executable: `chmod +x lethologic_anomia.sh`
 - Check file permissions in project directory
 
 **Database connection issues**  
@@ -175,5 +175,5 @@ This project is a Python port of a C++ medical imaging migration service.
 
 For technical support or questions about medical imaging migrations, consult the extended help:
 ```bash
-./run.sh --help-extended
+./lethologic_anomia.sh --help-extended
 ```

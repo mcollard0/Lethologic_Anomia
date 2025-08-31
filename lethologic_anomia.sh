@@ -17,9 +17,9 @@ if [ ! -d "venv_new" ]; then
     exit 1
 fi
 
-# Check if main.py exists
-if [ ! -f "main.py" ]; then
-    echo -e "${RED}Error: main.py not found in current directory!${NC}"
+# Check if lethologic_anomia.py exists
+if [ ! -f "lethologic_anomia.py" ]; then
+    echo -e "${RED}Error: lethologic_anomia.py not found in current directory!${NC}"
     echo "Make sure you're running this script from the project root."
     exit 1
 fi
@@ -29,4 +29,4 @@ echo -e "${YELLOW}Using virtual environment: venv_new${NC}"
 echo ""
 
 # Activate virtual environment and run the program
-source venv_new/bin/activate && python main.py "$@"
+source venv_new/bin/activate && python lethologic_anomia.py "$@"
