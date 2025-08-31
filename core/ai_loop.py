@@ -467,6 +467,26 @@ class AIService:
                         "difficulty": {"type": "string", "description": "Difficulty level: easy, medium, hard"}
                     }
                 }
+            },
+            {
+                "name": "start_index",
+                "description": "Start file indexing operation",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "directory": {"type": "string", "description": "Directory to index"}
+                    }
+                }
+            },
+            {
+                "name": "start_parse",
+                "description": "Start DICOM parsing operation",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "directory": {"type": "string", "description": "Directory to parse"}
+                    }
+                }
             }
         ]
     
@@ -510,6 +530,12 @@ class AIService:
                 
             elif function_name == "math_quiz":
                 return await self._math_quiz(arguments.get("difficulty", "easy"))
+                
+            elif function_name == "start_index":
+                return await self._start_index(arguments.get("directory", "."))
+                
+            elif function_name == "start_parse":
+                return await self._start_parse(arguments.get("directory", "."))
                 
             else:
                 return f"Function '{function_name}' is not implemented yet."
@@ -757,6 +783,156 @@ The AI will interpret your intent and execute the appropriate actions.
         except Exception as e:
             logger.error(f"Error generating math quiz: {e}")
             return f"Math quiz error: {str(e)}"
+    
+    async def _start_index(self, directory: str = ".") -> str:
+        """
+        Start file indexing operation
+        
+        Args:
+            directory: Directory to index (default current directory)
+            
+        Returns:
+            Indexing operation status
+        """
+        try:
+            if not os.path.exists(directory):
+                return f"Directory does not exist: {directory}"
+            
+            if not os.path.isdir(directory):
+                return f"Path is not a directory: {directory}"
+            
+            # Count files by type
+            file_counts = {}
+            total_files = 0
+            total_size = 0
+            
+            for root, dirs, files in os.walk(directory):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    try:
+                        # Get file extension
+                        _, ext = os.path.splitext(file)
+                        ext = ext.lower() if ext else 'no_extension'
+                        
+                        # Count by extension
+                        file_counts[ext] = file_counts.get(ext, 0) + 1
+                        total_files += 1
+                        
+                        # Add file size
+                        total_size += os.path.getsize(file_path)
+                        
+                    except (OSError, IOError) as e:
+                        logger.warning(f"Could not access file {file_path}: {e}")
+                        continue
+            
+            # Format results
+            result = []
+            result.append(f"File indexing complete for: {directory}")
+            result.append(f"Total files: {total_files}")
+            result.append(f"Total size: {total_size / (1024*1024):.2f} MB")
+            result.append("\nFile types:")
+            
+            # Sort by count descending
+            sorted_counts = sorted(file_counts.items(), key=lambda x: x[1], reverse=True)
+            for ext, count in sorted_counts[:10]:  # Show top 10 file types
+                result.append(f"  {ext}: {count} files")
+            
+            # Store index results in database
+            index_data = {
+                'directory': directory,
+                'total_files': total_files,
+                'total_size': total_size,
+                'file_counts': file_counts,
+                'indexed_at': datetime.now().isoformat()
+            }
+            
+            await self.db_manager.execute_query(
+                "INSERT OR REPLACE INTO config (name, value) VALUES (?, ?)",
+                (f"INDEX_{directory.replace('/', '_')}", json.dumps(index_data))
+            )
+            
+            return "\n".join(result)
+            
+        except Exception as e:
+            logger.error(f"Error in file indexing: {e}")
+            return f"File indexing error: {str(e)}"
+    
+    async def _start_parse(self, directory: str = ".") -> str:
+        """
+        Start DICOM parsing operation
+        
+        Args:
+            directory: Directory to parse for DICOM files
+            
+        Returns:
+            DICOM parsing operation status
+        """
+        try:
+            if not os.path.exists(directory):
+                return f"Directory does not exist: {directory}"
+            
+            if not os.path.isdir(directory):
+                return f"Path is not a directory: {directory}"
+            
+            # Look for DICOM files
+            dicom_files = []
+            potential_dicom_extensions = ['.dcm', '.dicom', '.ima', '.img', '']
+            
+            for root, dirs, files in os.walk(directory):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    _, ext = os.path.splitext(file)
+                    
+                    # Check if file might be DICOM
+                    if ext.lower() in potential_dicom_extensions or not ext:
+                        try:
+                            # Basic DICOM header check (look for DICM magic bytes)
+                            with open(file_path, 'rb') as f:
+                                f.seek(128)  # DICOM preamble is 128 bytes
+                                magic = f.read(4)
+                                if magic == b'DICM':
+                                    dicom_files.append(file_path)
+                        except (OSError, IOError):
+                            # Skip files we can't read
+                            continue
+            
+            result = []
+            result.append(f"DICOM parsing complete for: {directory}")
+            result.append(f"Found {len(dicom_files)} DICOM files")
+            
+            if dicom_files:
+                result.append("\nFirst 10 DICOM files found:")
+                for dicom_file in dicom_files[:10]:
+                    # Get relative path for cleaner display
+                    rel_path = os.path.relpath(dicom_file, directory)
+                    file_size = os.path.getsize(dicom_file)
+                    result.append(f"  {rel_path} ({file_size} bytes)")
+                
+                if len(dicom_files) > 10:
+                    result.append(f"  ... and {len(dicom_files) - 10} more files")
+            else:
+                result.append("\nNo DICOM files found in the specified directory.")
+                result.append("Note: This is a basic check for DICM magic bytes.")
+                result.append("For detailed DICOM parsing, use pydicom library.")
+            
+            # Store parse results in database
+            parse_data = {
+                'directory': directory,
+                'dicom_files_count': len(dicom_files),
+                'dicom_files': dicom_files[:100],  # Store first 100 files
+                'parsed_at': datetime.now().isoformat()
+            }
+            
+            await self.db_manager.execute_query(
+                "INSERT OR REPLACE INTO config (name, value) VALUES (?, ?)",
+                (f"PARSE_{directory.replace('/', '_')}", json.dumps(parse_data))
+            )
+            
+            return "\n".join(result)
+            
+        except Exception as e:
+            logger.error(f"Error in DICOM parsing: {e}")
+            return f"DICOM parsing error: {str(e)}"
 
 
 async def ai_loop(process_manager: ProcessManager, settings: Settings) -> None:
