@@ -21,7 +21,7 @@ except ImportError:
     SSHKey = None
     SSHAuthorizedKeys = None
 
-from core.logging import get_logger
+from core.custom_logging import get_logger, setup_logging
 from core.process_manager import ProcessManager
 from core.config import Settings
 from core.ai_loop import AIService

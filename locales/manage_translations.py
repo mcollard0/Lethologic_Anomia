@@ -26,7 +26,7 @@ try:
 except ImportError:
     BABEL_AVAILABLE = False
 
-from core.logging import get_logger
+from core.custom_logging import get_logger
 
 logger = get_logger(__name__)
 

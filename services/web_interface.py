@@ -26,7 +26,7 @@ import uvicorn
 import ssl
 from pathlib import Path
 
-from core.logging import get_logger
+from core.custom_logging import get_logger, setup_logging
 from core.process_manager import ProcessManager, ProcessType, ProcessState
 from core.config import Settings
 from core.ssl_manager import SSLManager

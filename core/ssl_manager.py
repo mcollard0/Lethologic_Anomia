@@ -17,7 +17,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 from cryptography import x509
 
-from .logging import get_logger
+from .custom_logging import get_logger
 
 logger = get_logger(__name__)
 

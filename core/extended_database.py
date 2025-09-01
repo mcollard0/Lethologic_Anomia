@@ -13,7 +13,7 @@ from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base, DatabaseManager
-from .logging import get_logger
+from .custom_logging import get_logger
 
 logger = get_logger(__name__)
 

@@ -17,7 +17,7 @@ from pydicom import Dataset, FileMetaDataset
 from pydicom.uid import ExplicitVRLittleEndian, generate_uid
 from pydicom.dataset import FileDataset
 
-from core.logging import get_logger
+from core.custom_logging import get_logger
 
 logger = get_logger(__name__)
 

@@ -44,7 +44,7 @@ from services.dicom.discovery import DICOMDiscoveryService
 from services.dicom.ssl_manager import DICOMSSLManager
 from core.database import DatabaseManager
 from core.config import Settings
-from core.logging import get_logger
+from core.custom_logging import get_logger
 
 logger = get_logger(__name__)
 console = Console()

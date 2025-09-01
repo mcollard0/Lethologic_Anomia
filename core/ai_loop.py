@@ -21,7 +21,7 @@ from transformers import WhisperProcessor, WhisperForConditionalGeneration
 import torch
 
 from .config import Settings
-from .logging import get_logger
+from .custom_logging import get_logger
 from .database import DatabaseManager
 from .redis_manager import RedisManager
 from .process_manager import ProcessManager
@@ -147,24 +147,43 @@ class AIService:
     async def _initialize_local_model(self) -> None:
         """Initialize local HuggingFace model for offline operation"""
         try:
-            # Use a lightweight model suitable for text processing
-            model_name = "microsoft/DialoGPT-medium"
+            # Use Mistral for better instruction following and function calling
+            model_name = "mistralai/Mistral-7B-Instruct-v0.1"
             
             logger.info(f"Loading local model: {model_name}")
             
-            # Load tokenizer and model
+            # Load tokenizer and model with optimizations
             self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-            self.local_model = AutoModelForCausalLM.from_pretrained(model_name)
+            self.local_model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+                device_map="auto" if torch.cuda.is_available() else None,
+                low_cpu_mem_usage=True
+            )
             
             # Add pad token if it doesn't exist
             if self.tokenizer.pad_token is None:
                 self.tokenizer.pad_token = self.tokenizer.eos_token
             
-            logger.info("Local AI model initialized successfully")
+            logger.info("Local AI model (Mistral-7B-Instruct) initialized successfully")
             
         except Exception as e:
-            logger.warning(f"Failed to initialize local model: {e}")
-            # Continue without local model - will use API only
+            logger.warning(f"Failed to initialize Mistral model, falling back to DialoGPT: {e}")
+            try:
+                # Fallback to DialoGPT if Mistral fails
+                model_name = "microsoft/DialoGPT-medium"
+                logger.info(f"Loading fallback model: {model_name}")
+                
+                self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+                self.local_model = AutoModelForCausalLM.from_pretrained(model_name)
+                
+                if self.tokenizer.pad_token is None:
+                    self.tokenizer.pad_token = self.tokenizer.eos_token
+                
+                logger.info("Fallback local AI model initialized successfully")
+            except Exception as fallback_error:
+                logger.warning(f"Failed to initialize fallback model: {fallback_error}")
+                # Continue without local model - will use API only
     
     async def _initialize_speech_models(self) -> None:
         """Initialize speech-to-text and text-to-speech models"""
@@ -349,7 +368,69 @@ class AIService:
         elif input_lower.startswith("get_aggression"):
             return f"Current aggression level: {self.aggression_level}"
         
+        # Pattern matching for natural language commands
+        # Check for user creation patterns
+        if self._matches_create_user_pattern(input_lower):
+            return await self._handle_natural_language_create_user(input_text)
+        
+        # Check for user management patterns
+        if self._matches_user_management_pattern(input_lower):
+            return await self._handle_natural_language_user_management(input_text)
+        
         return None
+    
+    def _matches_create_user_pattern(self, input_lower: str) -> bool:
+        """Check if input matches user creation patterns"""
+        patterns = [
+            "insert user", "create user", "add user", "new user",
+            "insert.*user.*table", "create.*user.*account",
+            "add.*username", "register user"
+        ]
+        
+        import re
+        for pattern in patterns:
+            if re.search(pattern, input_lower):
+                return True
+        return False
+    
+    def _matches_user_management_pattern(self, input_lower: str) -> bool:
+        """Check if input matches user management patterns"""
+        patterns = [
+            "delete user", "remove user", "list users", "show users",
+            "change password", "update password", "modify user"
+        ]
+        
+        import re
+        for pattern in patterns:
+            if re.search(pattern, input_lower):
+                return True
+        return False
+    
+    async def _handle_natural_language_create_user(self, input_text: str) -> str:
+        """Handle natural language user creation commands"""
+        import re
+        
+        # Extract username and password from natural language
+        username_match = re.search(r'username\s+([\w\.-]+)', input_text, re.IGNORECASE)
+        password_match = re.search(r'password\s+([\w\.-]+)', input_text, re.IGNORECASE)
+        
+        if username_match and password_match:
+            username = username_match.group(1)
+            password = password_match.group(1)
+            return await self._create_user(username, password)
+        else:
+            return "Could not extract username and password from your request. Please specify both clearly."
+    
+    async def _handle_natural_language_user_management(self, input_text: str) -> str:
+        """Handle other natural language user management commands"""
+        input_lower = input_text.lower()
+        
+        if "list" in input_lower or "show" in input_lower:
+            include_deleted = "deleted" in input_lower
+            return await self._list_users(include_deleted)
+        
+        # Add more user management patterns as needed
+        return "I understand you want to manage users, but please be more specific about what you'd like to do."
     
     async def _get_ai_response(self, user_input: str) -> str:
         """Get response from AI model using fallback priority order"""

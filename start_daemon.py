@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from core.config import Settings
 from core.database import DatabaseManager
 from core.process_manager import ProcessManager
-from core.logging import get_logger, setup_logging
+from core.custom_logging import setup_logging
 
 
 class MigrationServiceDaemon:

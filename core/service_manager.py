@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Any, Callable
 from datetime import datetime
 
 from .database import DatabaseManager
-from .logging import get_logger
+from .custom_logging import get_logger
 from .config import Settings
 
 logger = get_logger(__name__)

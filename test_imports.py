@@ -19,7 +19,7 @@ except Exception as e:
 
 try:
     print("2. Testing core.logging...")
-    from core.logging import get_logger
+    from core.custom_logging import get_logger
     logger = get_logger(__name__)
     print("   ✓ Logger loaded")
 except Exception as e:

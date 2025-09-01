@@ -31,7 +31,7 @@ sys.path.insert(0, str(project_root))
 # Core imports
 from core.config import Settings, get_settings
 from core.database import DatabaseManager
-from core.logging import setup_logging, get_logger
+from core.custom_logging import setup_logging, get_logger
 from core.process_manager import ProcessManager
 # AI loop import - optional for basic functionality
 try:

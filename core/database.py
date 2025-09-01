@@ -28,7 +28,7 @@ try:
 except ImportError:
     MONGODB_AVAILABLE = False
 
-from .logging import get_logger
+from .custom_logging import get_logger
 import hashlib
 from datetime import datetime
 

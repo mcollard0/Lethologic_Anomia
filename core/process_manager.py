@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from .config import Settings
 from .database import DatabaseManager
 from .redis_manager import RedisManager, RedisLock
-from .logging import get_logger, LogPollingService
+from .custom_logging import get_logger, LogPollingService
 
 logger = get_logger(__name__)
 
