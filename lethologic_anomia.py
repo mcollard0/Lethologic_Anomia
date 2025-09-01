@@ -160,11 +160,12 @@ async def run_main_loop(settings: Settings, process_manager: ProcessManager):
 @click.command()
 @click.option('--config', '-c', type=click.Path(exists=True), help='Configuration file path')
 @click.option('--daemon', '-d', is_flag=True, help='Run as daemon')
+@click.option('--interactive', '-i', is_flag=True, help='Force interactive mode (default if not daemon)')
 @click.option('--install', is_flag=True, help='Install as system service')
 @click.option('--uninstall', is_flag=True, help='Uninstall system service')
 @click.option('--debug', is_flag=True, help='Enable debug mode')
 @click.option('--help-extended', is_flag=True, help='Show extended help')
-def main(config: Optional[str], daemon: bool, install: bool, uninstall: bool, 
+def main(config: Optional[str], daemon: bool, interactive: bool, install: bool, uninstall: bool, 
          debug: bool, help_extended: bool):
     """
     Lethologic Anomia - DICOM/HL7 Medical Image Data Migration with AI
@@ -248,13 +249,17 @@ Set environment variables or use config file:
     logger.info(f"Python: {sys.version}")
     logger.info(f"Debug mode: {settings.debug}")
     
+    # Determine mode - default to interactive unless daemon is explicitly set
+    run_interactive = interactive or not daemon
+    
     if daemon:
         logger.info("Running in daemon mode")
-        # TODO: Implement proper daemon functionality for production
+    elif run_interactive:
+        logger.info("Running in interactive mode")
     
     # Run the main application
     try:
-        asyncio.run(_async_main(settings))
+        asyncio.run(_async_main(settings, run_interactive))
     except KeyboardInterrupt:
         logger.info("Received keyboard interrupt, shutting down...")
     except Exception as e:
@@ -263,7 +268,7 @@ Set environment variables or use config file:
         sys.exit(1)
 
 
-async def _async_main(settings: Settings):
+async def _async_main(settings: Settings, run_interactive: bool = False):
     """Async main function"""
     global _process_manager
     
@@ -271,8 +276,17 @@ async def _async_main(settings: Settings):
         # Initialize services
         _process_manager = await initialize_services(settings)
         
-        # Run main loop
-        await run_main_loop(settings, _process_manager)
+        if run_interactive:
+            # Run in interactive mode - start AI loop directly
+            if AI_LOOP_AVAILABLE:
+                logger.info("Starting interactive AI loop...")
+                await ai_loop(_process_manager, settings)
+            else:
+                logger.error("Interactive mode requested but AI loop not available")
+                sys.exit(1)
+        else:
+            # Run main loop in daemon mode
+            await run_main_loop(settings, _process_manager)
         
     except Exception as e:
         logger.error(f"Error in async main: {e}")

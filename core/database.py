@@ -515,7 +515,13 @@ class DatabaseManager:
                 if params is None:
                     result = await session.execute(text(query))
                 elif isinstance(params, tuple):
-                    result = await session.execute(text(query), params)
+                    # Convert tuple to dictionary with numbered keys
+                    param_dict = {f'param{i+1}': param for i, param in enumerate(params)}
+                    # Replace ? with :param1, :param2, etc.
+                    formatted_query = query
+                    for i in range(len(params)):
+                        formatted_query = formatted_query.replace('?', f':param{i+1}', 1)
+                    result = await session.execute(text(formatted_query), param_dict)
                 else:
                     result = await session.execute(text(query), params)
                     
@@ -598,8 +604,8 @@ class DatabaseManager:
             password_hash = self._hash_password(password)
             
             await self.execute_query(
-                "INSERT INTO user (username, password, enabled, deleted) VALUES (?, ?, ?, ?)",
-                (username, password_hash, True, False)
+                "INSERT INTO user (username, password, enabled, deleted, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (username, password_hash, True, False, datetime.now(), datetime.now())
             )
             
             logger.info(f"User created successfully: {username}")
