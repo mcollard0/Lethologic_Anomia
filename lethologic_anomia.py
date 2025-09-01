@@ -111,7 +111,7 @@ async def start_web_interface(settings: Settings, process_manager: ProcessManage
 async def start_ssh_server(settings: Settings, process_manager: ProcessManager):
     """Start the SSH server"""
     if settings.ssh_enabled:
-        ssh_server = SSHServer(settings.ssh_port, process_manager)
+        ssh_server = SSHServer(settings, process_manager)
         await ssh_server.start()
         logger.info(f"SSH server started on port {settings.ssh_port}")
 
@@ -125,26 +125,27 @@ async def run_main_loop(settings: Settings, process_manager: ProcessManager):
         # Start SSH server
         await start_ssh_server(settings, process_manager)
         
-        # Start the AI loop (main program logic) if available
-        ai_task = None
-        if AI_LOOP_AVAILABLE and ai_loop:
-            ai_task = asyncio.create_task(ai_loop(process_manager, settings))
-            logger.info("AI loop started")
+        # Initialize AI service for other components to use
+        ai_service = None
+        if AI_LOOP_AVAILABLE:
+            from core.ai_loop import AIService
+            ai_service = AIService(settings, process_manager.db_manager)
+            await ai_service.initialize()
+            logger.info("AI service initialized")
+            
+            # Store AI service reference for other components
+            process_manager.ai_service = ai_service
         else:
             logger.warning("AI loop not available, running in basic mode")
+        
+        # In daemon mode, just wait for shutdown signal
+        # Console interface is available via SSH
+        logger.info("Service running in daemon mode. Use SSH or web interface for interaction.")
         
         # Wait for shutdown signal
         await _shutdown_event.wait()
         
         logger.info("Shutdown signal received, stopping services...")
-        
-        # Cancel AI loop if running
-        if ai_task:
-            ai_task.cancel()
-            try:
-                await ai_task
-            except asyncio.CancelledError:
-                pass
         
         # Stop process manager
         await process_manager.shutdown()

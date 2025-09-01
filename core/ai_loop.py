@@ -62,7 +62,7 @@ class AIService:
         self.available_providers = []
         
         # Response tracking
-        self.last_responses: List[str] = [""] * 10
+        self.last_responses: Dict[int, str] = {i: "" for i in range(10)}
         self.response_position = 0
         
         # Thinking words for user feedback
@@ -214,8 +214,15 @@ class AIService:
             
             if result and result[0].get('value'):
                 responses_json = json.loads(result[0]['value'])
-                for i in range(min(len(responses_json), 10)):
-                    self.last_responses[i] = responses_json[i]
+                if isinstance(responses_json, dict):
+                    # New format: dictionary
+                    for i in range(min(len(responses_json), 10)):
+                        if str(i) in responses_json:
+                            self.last_responses[i] = responses_json[str(i)]
+                elif isinstance(responses_json, list):
+                    # Old format: list - convert to dictionary
+                    for i in range(min(len(responses_json), 10)):
+                        self.last_responses[i] = responses_json[i]
             
             # Load response position
             result = await self.db_manager.execute_query(

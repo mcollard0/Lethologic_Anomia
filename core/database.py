@@ -169,6 +169,23 @@ class User(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
 
 
+class Service(Base):
+    """Service table for managing system services configuration"""
+    __tablename__ = 'service'
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    service_name: Mapped[str] = mapped_column(String(64), unique=True)  # Web Server, FHIR Server, etc.
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    auto_start: Mapped[bool] = mapped_column(Boolean, default=True)
+    singleton: Mapped[bool] = mapped_column(Boolean, default=True)  # Multiple instances allowed?
+    ports: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)  # Comma-separated ports
+    description: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    settings_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON settings
+    status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # running, stopped, error
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
 class DatabaseManager:
     """
     Multi-database manager with SQL translation capabilities
@@ -494,7 +511,14 @@ class DatabaseManager:
                 return []
             
             async with self.session_factory() as session:
-                result = await session.execute(text(query), params or {})
+                # Handle both tuple and dict parameters
+                if params is None:
+                    result = await session.execute(text(query))
+                elif isinstance(params, tuple):
+                    result = await session.execute(text(query), params)
+                else:
+                    result = await session.execute(text(query), params)
+                    
                 if result.returns_rows:
                     rows = result.fetchall()
                     return [dict(row._mapping) for row in rows]
@@ -698,3 +722,175 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Error listing users: {e}")
             return []
+    
+    # Service Management Functions
+    
+    async def get_service(self, service_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Get service configuration by name
+        
+        Args:
+            service_name: Name of the service
+            
+        Returns:
+            Service configuration dictionary or None if not found
+        """
+        try:
+            result = await self.execute_query(
+                "SELECT * FROM service WHERE service_name = ?",
+                (service_name,)
+            )
+            return result[0] if result else None
+            
+        except Exception as e:
+            logger.error(f"Error getting service {service_name}: {e}")
+            return None
+    
+    async def get_auto_start_services(self) -> List[Dict[str, Any]]:
+        """
+        Get all services that should auto-start
+        
+        Returns:
+            List of service configurations for auto-start services
+        """
+        try:
+            result = await self.execute_query(
+                "SELECT * FROM service WHERE enabled = ? AND auto_start = ? ORDER BY service_name",
+                (True, True)
+            )
+            return result or []
+            
+        except Exception as e:
+            logger.error(f"Error getting auto-start services: {e}")
+            return []
+    
+    async def list_services(self) -> List[Dict[str, Any]]:
+        """
+        List all services
+        
+        Returns:
+            List of all service configurations
+        """
+        try:
+            result = await self.execute_query(
+                "SELECT * FROM service ORDER BY service_name"
+            )
+            return result or []
+            
+        except Exception as e:
+            logger.error(f"Error listing services: {e}")
+            return []
+    
+    async def create_or_update_service(
+        self, 
+        service_name: str, 
+        enabled: bool = True,
+        auto_start: bool = True,
+        singleton: bool = True,
+        ports: Optional[str] = None,
+        description: Optional[str] = None,
+        settings_json: Optional[str] = None,
+        status: Optional[str] = None
+    ) -> bool:
+        """
+        Create or update a service configuration
+        
+        Args:
+            service_name: Name of the service
+            enabled: Whether the service is enabled
+            auto_start: Whether to auto-start the service
+            singleton: Whether only one instance is allowed
+            ports: Comma-separated list of ports
+            description: Service description
+            settings_json: JSON settings for the service
+            status: Current service status
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            await self.execute_query(
+                """INSERT OR REPLACE INTO service 
+                   (service_name, enabled, auto_start, singleton, ports, description, settings_json, status, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (service_name, enabled, auto_start, singleton, ports, description, settings_json, status, datetime.now())
+            )
+            
+            logger.info(f"Service configuration updated: {service_name}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error creating/updating service {service_name}: {e}")
+            return False
+    
+    async def update_service_status(self, service_name: str, status: str) -> bool:
+        """
+        Update service status
+        
+        Args:
+            service_name: Name of the service
+            status: New status (running, stopped, error, etc.)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            await self.execute_query(
+                "UPDATE service SET status = ?, updated_at = ? WHERE service_name = ?",
+                (status, datetime.now(), service_name)
+            )
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error updating service status for {service_name}: {e}")
+            return False
+    
+    async def enable_service(self, service_name: str, enabled: bool = True) -> bool:
+        """
+        Enable or disable a service
+        
+        Args:
+            service_name: Name of the service
+            enabled: Whether to enable (True) or disable (False) the service
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            await self.execute_query(
+                "UPDATE service SET enabled = ?, updated_at = ? WHERE service_name = ?",
+                (enabled, datetime.now(), service_name)
+            )
+            
+            action = "enabled" if enabled else "disabled"
+            logger.info(f"Service {service_name} {action}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error enabling/disabling service {service_name}: {e}")
+            return False
+    
+    async def set_service_auto_start(self, service_name: str, auto_start: bool = True) -> bool:
+        """
+        Set service auto-start configuration
+        
+        Args:
+            service_name: Name of the service
+            auto_start: Whether to auto-start the service
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            await self.execute_query(
+                "UPDATE service SET auto_start = ?, updated_at = ? WHERE service_name = ?",
+                (auto_start, datetime.now(), service_name)
+            )
+            
+            action = "enabled" if auto_start else "disabled"
+            logger.info(f"Auto-start {action} for service {service_name}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error setting auto-start for service {service_name}: {e}")
+            return False

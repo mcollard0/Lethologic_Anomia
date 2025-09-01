@@ -46,7 +46,7 @@ class AILoopSSHSession:
             process.stdout.write("\n")
             
             # Initialize AI service if not already done
-            if not hasattr(self.ai_service, 'available_providers'):
+            if self.ai_service and not hasattr(self.ai_service, 'available_providers'):
                 await self.ai_service.initialize()
             
             # Main interaction loop
@@ -73,8 +73,11 @@ class AILoopSSHSession:
                     if not user_input:
                         continue
                     
-                    # Process input through AI Loop
-                    response = await self.ai_service.process_input(user_input)
+                    # Process input through AI service if available
+                    if self.ai_service:
+                        response = await self.ai_service.process_input(user_input)
+                    else:
+                        response = "AI service not available. Basic commands only."
                     
                     # Handle special responses
                     if response == "QUIT_REQUESTED":
@@ -226,13 +229,11 @@ class SSHServer:
         try:
             logger.info(f"SSH client connected from {process.get_extra_info('peername')}")
             
-            # Initialize AI service if needed
-            if not self.ai_service:
-                self.ai_service = AIService(self.settings, self.process_manager.db_manager)
-                await self.ai_service.initialize()
+            # Get AI service from process manager
+            ai_service = getattr(self.process_manager, 'ai_service', None)
             
             # Create and run AI Loop session
-            session = AILoopSSHSession(self.ai_service, self.settings)
+            session = AILoopSSHSession(ai_service, self.settings)
             await session.handle_session(process)
             
         except Exception as e:
