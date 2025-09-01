@@ -402,7 +402,7 @@ class HL7Listener:
                 try:
                     loop.run_until_complete(
                         self.db_manager.execute_query(
-                            "INSERT INTO hl7_orders (order_number, order_control, procedure_code, received_at) VALUES (?, ?, ?, ?)",
+                            "INSERT INTO hl7_order (order_number, order_control, procedure_code, received_at) VALUES (?, ?, ?, ?)",
                             [order_number, order_control, procedure_code, datetime.now().isoformat()]
                         )
                     )

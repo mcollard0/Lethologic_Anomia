@@ -19,7 +19,7 @@ class DatabaseSettings(BaseSettings):
     
     # Primary database URL (defaults to SQLite)
     database_url: str = Field(
-        default="sqlite:///./migration_service.db",
+        default="sqlite:///./lethologic_anomia.db",
         env="DATABASE_URL",
         description="Primary database connection URL"
     )

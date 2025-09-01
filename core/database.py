@@ -66,22 +66,39 @@ class ConfigEntry(Base):
 
 
 class Site(Base):
-    """Sites table - equivalent to C++ SITES table"""
-    __tablename__ = 'sites'
+    """Site table - normalized basic site information"""
+    __tablename__ = 'site'
     
     id: Mapped[int] = mapped_column(primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    deleted: Mapped[bool] = mapped_column(Boolean, default=False)
     sitename: Mapped[str] = mapped_column(String(255), unique=True)
+    status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
+class Device(Base):
+    """Device table - technical connection details"""
+    __tablename__ = 'device'
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey('site.id'))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    deleted: Mapped[bool] = mapped_column(Boolean, default=False)
+    device_name: Mapped[str] = mapped_column(String(255))
     ip_address: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
     port: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     ae_title: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    device_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # DICOM_SCP, DICOM_SCU, HL7_LISTENER, etc.
     status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
 
 
 class Study(Base):
-    """Studies table - equivalent to C++ STUDIES table"""
-    __tablename__ = 'studies'
+    """Study table - singular name, equivalent to C++ STUDIES table"""
+    __tablename__ = 'study'
     
     id: Mapped[int] = mapped_column(primary_key=True)
     study_uid: Mapped[str] = mapped_column(String(64), unique=True)
@@ -95,18 +112,18 @@ class Study(Base):
     modality: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
     institution_name: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     study_status: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    site_id: Mapped[Optional[int]] = mapped_column(ForeignKey('sites.id'), nullable=True)
+    site_id: Mapped[Optional[int]] = mapped_column(ForeignKey('site.id'), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
 
 
 class Series(Base):
-    """Series table - equivalent to C++ SERIES table"""
+    """Series table - singular name, equivalent to C++ SERIES table"""
     __tablename__ = 'series'
     
     id: Mapped[int] = mapped_column(primary_key=True)
     series_uid: Mapped[str] = mapped_column(String(64), unique=True)
-    study_id: Mapped[int] = mapped_column(ForeignKey('studies.id'))
+    study_id: Mapped[int] = mapped_column(ForeignKey('study.id'))
     series_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     series_description: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     modality: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
@@ -118,8 +135,8 @@ class Series(Base):
 
 
 class Image(Base):
-    """Images table - equivalent to C++ IMAGES table"""
-    __tablename__ = 'images'
+    """Image table - singular name, equivalent to C++ IMAGES table"""
+    __tablename__ = 'image'
     
     id: Mapped[int] = mapped_column(primary_key=True)
     sop_instance_uid: Mapped[str] = mapped_column(String(64), unique=True)

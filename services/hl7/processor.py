@@ -559,7 +559,7 @@ class HL7Processor:
             
             await self.db_manager.execute_query(
                 """
-                INSERT INTO hl7_messages 
+                INSERT INTO hl7_message 
                 (processing_id, message_type, message_text, source_address, received_at, processed_at)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
@@ -763,7 +763,7 @@ class HL7Processor:
         """Load workflows from database"""
         try:
             result = await self.db_manager.execute_query(
-                "SELECT workflow_id, message_type, steps, retry_count, retry_delay_seconds, enabled FROM hl7_workflows"
+                "SELECT workflow_id, message_type, steps, retry_count, retry_delay_seconds, enabled FROM hl7_workflow"
             )
             
             for row in result:
