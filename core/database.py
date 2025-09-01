@@ -29,6 +29,8 @@ except ImportError:
     MONGODB_AVAILABLE = False
 
 from .logging import get_logger
+import hashlib
+from datetime import datetime
 
 logger = get_logger(__name__)
 
@@ -150,6 +152,19 @@ class Image(Base):
     pixel_spacing: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     rows: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     columns: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
+class User(Base):
+    """User table for authentication and access control"""
+    __tablename__ = 'user'
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    deleted: Mapped[bool] = mapped_column(Boolean, default=False)
+    username: Mapped[str] = mapped_column(String(64), unique=True)
+    password: Mapped[str] = mapped_column(String(128))  # SHA-512 hash
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
 
@@ -490,3 +505,196 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Error executing query: {e}")
             raise
+    
+    def _hash_password(self, password: str) -> str:
+        """Hash password using SHA-512"""
+        return hashlib.sha512(password.encode('utf-8')).hexdigest()
+    
+    async def check_user(self, username: str, password: str) -> bool:
+        """
+        Check user credentials for authentication
+        
+        Args:
+            username: Username to check
+            password: Plain text password to verify
+            
+        Returns:
+            True if credentials are valid and user is enabled, False otherwise
+        """
+        try:
+            password_hash = self._hash_password(password)
+            
+            result = await self.execute_query(
+                "SELECT id, enabled, deleted FROM user WHERE username = ? AND password = ?",
+                (username, password_hash)
+            )
+            
+            if not result:
+                logger.warning(f"Authentication failed for user: {username} (invalid credentials)")
+                return False
+            
+            user = result[0]
+            if user.get('deleted', False):
+                logger.warning(f"Authentication failed for user: {username} (user deleted)")
+                return False
+                
+            if not user.get('enabled', False):
+                logger.warning(f"Authentication failed for user: {username} (user disabled)")
+                return False
+            
+            logger.info(f"Authentication successful for user: {username}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error checking user credentials: {e}")
+            return False
+    
+    async def create_user(self, username: str, password: str) -> bool:
+        """
+        Create a new user account
+        
+        Args:
+            username: Username for the new account
+            password: Plain text password (will be hashed with SHA-512)
+            
+        Returns:
+            True if user created successfully, False otherwise
+        """
+        try:
+            # Check if user already exists
+            existing = await self.execute_query(
+                "SELECT id FROM user WHERE username = ?",
+                (username,)
+            )
+            
+            if existing:
+                logger.warning(f"Cannot create user {username}: username already exists")
+                return False
+            
+            password_hash = self._hash_password(password)
+            
+            await self.execute_query(
+                "INSERT INTO user (username, password, enabled, deleted) VALUES (?, ?, ?, ?)",
+                (username, password_hash, True, False)
+            )
+            
+            logger.info(f"User created successfully: {username}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error creating user {username}: {e}")
+            return False
+    
+    async def delete_user(self, username: str) -> bool:
+        """
+        Delete a user account (soft delete - marks as deleted)
+        
+        Args:
+            username: Username to delete
+            
+        Returns:
+            True if user deleted successfully, False otherwise
+        """
+        try:
+            result = await self.execute_query(
+                "UPDATE user SET deleted = ?, enabled = ?, updated_at = ? WHERE username = ?",
+                (True, False, datetime.now(), username)
+            )
+            
+            # Check if any rows were affected
+            user_check = await self.execute_query(
+                "SELECT id FROM user WHERE username = ?",
+                (username,)
+            )
+            
+            if not user_check:
+                logger.warning(f"Cannot delete user {username}: user not found")
+                return False
+            
+            logger.info(f"User deleted successfully: {username}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error deleting user {username}: {e}")
+            return False
+    
+    async def change_password(self, username: str, old_password: str, new_password: str) -> bool:
+        """
+        Change user password
+        
+        Args:
+            username: Username whose password to change
+            old_password: Current password (for verification)
+            new_password: New password to set
+            
+        Returns:
+            True if password changed successfully, False otherwise
+        """
+        try:
+            # Verify current password
+            if not await self.check_user(username, old_password):
+                logger.warning(f"Password change failed for {username}: invalid current password")
+                return False
+            
+            new_password_hash = self._hash_password(new_password)
+            
+            await self.execute_query(
+                "UPDATE user SET password = ?, updated_at = ? WHERE username = ? AND enabled = ? AND deleted = ?",
+                (new_password_hash, datetime.now(), username, True, False)
+            )
+            
+            logger.info(f"Password changed successfully for user: {username}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error changing password for user {username}: {e}")
+            return False
+    
+    async def get_user_info(self, username: str) -> Optional[Dict[str, Any]]:
+        """
+        Get user information (excluding password)
+        
+        Args:
+            username: Username to get info for
+            
+        Returns:
+            Dictionary with user info or None if not found
+        """
+        try:
+            result = await self.execute_query(
+                "SELECT id, username, enabled, deleted, created_at, updated_at FROM user WHERE username = ?",
+                (username,)
+            )
+            
+            if result:
+                return result[0]
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error getting user info for {username}: {e}")
+            return None
+    
+    async def list_users(self, include_deleted: bool = False) -> List[Dict[str, Any]]:
+        """
+        List all users (excluding passwords)
+        
+        Args:
+            include_deleted: Whether to include deleted users
+            
+        Returns:
+            List of user dictionaries
+        """
+        try:
+            if include_deleted:
+                query = "SELECT id, username, enabled, deleted, created_at, updated_at FROM user ORDER BY username"
+                params = ()
+            else:
+                query = "SELECT id, username, enabled, deleted, created_at, updated_at FROM user WHERE deleted = ? ORDER BY username"
+                params = (False,)
+            
+            result = await self.execute_query(query, params)
+            return result or []
+            
+        except Exception as e:
+            logger.error(f"Error listing users: {e}")
+            return []

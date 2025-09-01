@@ -180,10 +180,14 @@ class WebSettings(BaseSettings):
     web_interface_enabled: bool = Field(default=True, env="WEB_INTERFACE_ENABLED")
     web_port: int = Field(default=50443, env="WEB_PORT")
     
-    # SSL settings
-    ssl_enabled: bool = Field(default=True, env="WEB_SSL_ENABLED") 
-    ssl_certfile: Optional[str] = Field(default=None, env="WEB_SSL_CERT")
-    ssl_keyfile: Optional[str] = Field(default=None, env="WEB_SSL_KEY")
+    # SSL settings - ENFORCED SSL-only, no HTTP fallback
+    ssl_enabled: bool = Field(default=True, env="WEB_SSL_ENABLED")
+    ssl_only: bool = Field(default=True, env="WEB_SSL_ONLY")  # Force SSL-only
+    ssl_certfile: Optional[str] = Field(default="etc/key/certificate.pem", env="WEB_SSL_CERT")
+    ssl_keyfile: Optional[str] = Field(default="etc/key/private.key", env="WEB_SSL_KEY")
+    ssl_min_version: str = Field(default="TLSv1_2", env="WEB_SSL_MIN_VERSION")  # Minimum TLS 1.2
+    ssl_max_version: str = Field(default="TLSv1_3", env="WEB_SSL_MAX_VERSION")  # Allow up to TLS 1.3
+    ssl_ciphers: Optional[str] = Field(default=None, env="WEB_SSL_CIPHERS")  # Use system defaults unless specified
     
     # Session settings
     secret_key: str = Field(default="change-me-in-production", env="WEB_SECRET_KEY")
@@ -195,11 +199,28 @@ class SSHSettings(BaseSettings):
     
     ssh_enabled: bool = Field(default=True, env="SSH_ENABLED")
     ssh_port: int = Field(default=50022, env="SSH_PORT")
-    ssh_host_key: Optional[str] = Field(default=None, env="SSH_HOST_KEY")
+    ssh_host_key: Optional[str] = Field(default="etc/key/ssh_host_key", env="SSH_HOST_KEY")
+    ssh_host_key_type: str = Field(default="rsa", env="SSH_HOST_KEY_TYPE")  # rsa, ed25519
     
-    # Authentication
+    # Authentication settings
     ssh_password: Optional[str] = Field(default=None, env="SSH_PASSWORD")
-    ssh_authorized_keys: Optional[str] = Field(default=None, env="SSH_AUTHORIZED_KEYS")
+    ssh_authorized_keys: Optional[str] = Field(default="etc/key/authorized_keys", env="SSH_AUTHORIZED_KEYS")
+    ssh_require_auth: bool = Field(default=True, env="SSH_REQUIRE_AUTH")
+    ssh_allow_password: bool = Field(default=True, env="SSH_ALLOW_PASSWORD")
+    ssh_allow_public_key: bool = Field(default=True, env="SSH_ALLOW_PUBLIC_KEY")
+    
+    # AILoop integration
+    ailoop_enabled: bool = Field(default=True, env="SSH_AILOOP_ENABLED")
+    ailoop_banner: str = Field(
+        default="Welcome to Migration Service AI Assistant\nType 'help' for commands or speak naturally\n",
+        env="SSH_AILOOP_BANNER"
+    )
+    ailoop_prompt: str = Field(default="AI> ", env="SSH_AILOOP_PROMPT")
+    
+    # Connection settings
+    max_connections: int = Field(default=10, env="SSH_MAX_CONNECTIONS")
+    connection_timeout: int = Field(default=300, env="SSH_CONNECTION_TIMEOUT")  # 5 minutes
+    keepalive_interval: int = Field(default=60, env="SSH_KEEPALIVE_INTERVAL")  # 1 minute
 
 
 class Settings(BaseSettings):

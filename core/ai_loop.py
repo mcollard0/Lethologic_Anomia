@@ -664,6 +664,52 @@ User query: {user_input}"""
                         "directory": {"type": "string", "description": "Directory to parse"}
                     }
                 }
+            },
+            {
+                "name": "create_user",
+                "description": "Create a new user account",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "username": {"type": "string", "description": "Username for new account"},
+                        "password": {"type": "string", "description": "Password for new account"}
+                    },
+                    "required": ["username", "password"]
+                }
+            },
+            {
+                "name": "delete_user",
+                "description": "Delete a user account",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "username": {"type": "string", "description": "Username to delete"}
+                    },
+                    "required": ["username"]
+                }
+            },
+            {
+                "name": "change_password",
+                "description": "Change a user's password",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "username": {"type": "string", "description": "Username whose password to change"},
+                        "old_password": {"type": "string", "description": "Current password"},
+                        "new_password": {"type": "string", "description": "New password"}
+                    },
+                    "required": ["username", "old_password", "new_password"]
+                }
+            },
+            {
+                "name": "list_users",
+                "description": "List all user accounts",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "include_deleted": {"type": "boolean", "description": "Include deleted users (default: false)"}
+                    }
+                }
             }
         ]
     
@@ -713,6 +759,25 @@ User query: {user_input}"""
                 
             elif function_name == "start_parse":
                 return await self._start_parse(arguments.get("directory", "."))
+                
+            elif function_name == "create_user":
+                return await self._create_user(
+                    arguments.get("username", ""),
+                    arguments.get("password", "")
+                )
+                
+            elif function_name == "delete_user":
+                return await self._delete_user(arguments.get("username", ""))
+                
+            elif function_name == "change_password":
+                return await self._change_password(
+                    arguments.get("username", ""),
+                    arguments.get("old_password", ""),
+                    arguments.get("new_password", "")
+                )
+                
+            elif function_name == "list_users":
+                return await self._list_users(arguments.get("include_deleted", False))
                 
             else:
                 return f"Function '{function_name}' is not implemented yet."
@@ -1171,6 +1236,89 @@ The AI will interpret your intent and execute the appropriate actions.
         except Exception as e:
             logger.error(f"Error in DICOM parsing: {e}")
             return f"❌ DICOM parsing failed: {str(e)}"
+    
+    async def _create_user(self, username: str, password: str) -> str:
+        """Create a new user account"""
+        try:
+            if not username or not password:
+                return "Username and password are required."
+            
+            success = await self.db_manager.create_user(username, password)
+            
+            if success:
+                return f"✅ User '{username}' created successfully."
+            else:
+                return f"❌ Failed to create user '{username}'. Username may already exist."
+                
+        except Exception as e:
+            logger.error(f"Error creating user {username}: {e}")
+            return f"❌ Error creating user: {str(e)}"
+    
+    async def _delete_user(self, username: str) -> str:
+        """Delete a user account"""
+        try:
+            if not username:
+                return "Username is required."
+            
+            success = await self.db_manager.delete_user(username)
+            
+            if success:
+                return f"✅ User '{username}' deleted successfully."
+            else:
+                return f"❌ Failed to delete user '{username}'. User may not exist."
+                
+        except Exception as e:
+            logger.error(f"Error deleting user {username}: {e}")
+            return f"❌ Error deleting user: {str(e)}"
+    
+    async def _change_password(self, username: str, old_password: str, new_password: str) -> str:
+        """Change user password"""
+        try:
+            if not username or not old_password or not new_password:
+                return "Username, old password, and new password are all required."
+            
+            success = await self.db_manager.change_password(username, old_password, new_password)
+            
+            if success:
+                return f"✅ Password changed successfully for user '{username}'."
+            else:
+                return f"❌ Failed to change password for user '{username}'. Check current password and ensure user exists."
+                
+        except Exception as e:
+            logger.error(f"Error changing password for user {username}: {e}")
+            return f"❌ Error changing password: {str(e)}"
+    
+    async def _list_users(self, include_deleted: bool = False) -> str:
+        """List all user accounts"""
+        try:
+            users = await self.db_manager.list_users(include_deleted)
+            
+            if not users:
+                return "No users found in the database."
+            
+            output = []
+            output.append(f"User Accounts ({len(users)} total):")
+            output.append("=" * 50)
+            
+            for user in users:
+                status = "🟢 Active" if user.get('enabled') else "🔴 Disabled"
+                if user.get('deleted'):
+                    status = "🗑️ Deleted"
+                
+                created = user.get('created_at')
+                if isinstance(created, datetime):
+                    created_str = created.strftime('%Y-%m-%d %H:%M')
+                else:
+                    created_str = str(created)
+                
+                output.append(f"• {user['username']} ({status})")
+                output.append(f"  ID: {user['id']}, Created: {created_str}")
+            
+            return "\n".join(output)
+            
+        except Exception as e:
+            logger.error(f"Error listing users: {e}")
+            return f"❌ Error listing users: {str(e)}"
 
 
 async def ai_loop(process_manager: ProcessManager, settings: Settings) -> None:
