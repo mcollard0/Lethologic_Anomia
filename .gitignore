@@ -42,3 +42,8 @@ generated_dicom/
 
 # Virtual environments
 venv_new/
+
+# SSL Keys
+etc/key/
+private.key
+public.key

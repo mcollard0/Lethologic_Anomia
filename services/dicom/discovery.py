@@ -8,14 +8,17 @@ Can discover DICOM services on the network and verify connectivity.
 import asyncio
 import socket
 import threading
-from datetime import datetime
+import subprocess
+import json
+import re
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple, Union
 import ipaddress
 import concurrent.futures
 
 from pynetdicom import AE, debug_logger
-from pynetdicom.sop_class import VerificationSOPClass
+from pynetdicom.sop_class import Verification
 from pydicom import Dataset
 
 from ...core.logging import get_logger
@@ -73,12 +76,20 @@ class DICOMDiscoveryService:
         # Initialize AE
         self._initialize_ae()
         
+        # Time-based discovery configuration
+        self.time_discovery_config = {
+            'initial_time_range_hours': 24,
+            'backoff_ranges': [12, 6, 3, 1, 0.5],  # Hours
+            'limit_thresholds': [100, 200, 500, 512, 1000, 1024, 2048],  # Common limits
+            'max_attempts': 5
+        }
+        
         logger.info("DICOM Discovery Service initialized")
     
     def _initialize_ae(self):
         """Initialize Application Entity for discovery"""
         self.ae = AE(ae_title=self.config['ae_title'])
-        self.ae.add_requested_context(VerificationSOPClass)
+        self.ae.add_requested_context(Verification)
         self.ae.network_timeout = self.config['network_timeout']
         
     async def discover_network_range(
@@ -454,6 +465,370 @@ class DICOMDiscoveryService:
         except Exception as e:
             logger.error(f"Error retrieving discovered services: {e}")
             return []
+    
+    async def discover_by_time_range(
+        self,
+        host: str,
+        port: int,
+        ae_title: str,
+        hours_back: int = 24,
+        auto_backoff: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Discover DICOM studies using C-FIND with time-based queries
+        Implements backoff logic when hitting common result limits
+        
+        Args:
+            host: DICOM host IP or hostname
+            port: DICOM port
+            ae_title: Target AE title
+            hours_back: Hours to search back from now
+            auto_backoff: Enable automatic backoff on suspected limits
+            
+        Returns:
+            Dictionary with discovery results and metadata
+        """
+        logger.info(f"Starting time-based discovery on {host}:{port} (AE: {ae_title})")
+        
+        try:
+            start_time = datetime.now()
+            end_time = start_time
+            search_start = start_time - timedelta(hours=hours_back)
+            
+            discovery_result = {
+                'host': host,
+                'port': port,
+                'ae_title': ae_title,
+                'search_start': search_start.isoformat(),
+                'search_end': end_time.isoformat(),
+                'hours_searched': hours_back,
+                'total_studies': 0,
+                'total_series': 0,
+                'queries_performed': 0,
+                'backoff_triggered': False,
+                'final_time_range_hours': hours_back,
+                'discovery_method': 'time_based_cfind',
+                'queries': []
+            }
+            
+            # Perform initial query
+            query_result = await self._perform_cfind_time_query(
+                host, port, ae_title, search_start, end_time
+            )
+            
+            discovery_result['queries'].append(query_result)
+            discovery_result['queries_performed'] = 1
+            
+            if not query_result['success']:
+                discovery_result['error'] = query_result['error']
+                return discovery_result
+            
+            study_count = query_result['study_count']
+            series_count = query_result['series_count']
+            
+            discovery_result['total_studies'] = study_count
+            discovery_result['total_series'] = series_count
+            
+            # Check if we hit a common limit threshold
+            if auto_backoff and self._is_likely_limit_hit(study_count):
+                logger.info(f"Potential limit detected ({study_count} studies). Starting backoff strategy.")
+                
+                backoff_result = await self._perform_backoff_discovery(
+                    host, port, ae_title, start_time, hours_back
+                )
+                
+                discovery_result.update(backoff_result)
+                discovery_result['backoff_triggered'] = True
+            
+            # Store discovery results
+            await self._store_time_discovery_result(discovery_result)
+            
+            logger.info(f"Time-based discovery completed: {discovery_result['total_studies']} studies found")
+            return discovery_result
+            
+        except Exception as e:
+            logger.error(f"Error in time-based discovery: {e}")
+            return {
+                'host': host,
+                'port': port,
+                'ae_title': ae_title,
+                'error': str(e),
+                'success': False
+            }
+    
+    def _is_likely_limit_hit(self, count: int) -> bool:
+        """
+        Check if the result count suggests we hit a query limit
+        
+        Args:
+            count: Number of results returned
+            
+        Returns:
+            True if count suggests a limit was hit
+        """
+        # Common DICOM query limits (round numbers and powers of 2)
+        for threshold in self.time_discovery_config['limit_thresholds']:
+            if count == threshold:
+                return True
+                
+        # Also check if it's a "suspicious" round number
+        if count > 0 and count % 100 == 0 and count >= 100:
+            return True
+            
+        return False
+    
+    async def _perform_backoff_discovery(
+        self,
+        host: str,
+        port: int,
+        ae_title: str,
+        end_time: datetime,
+        original_hours: int
+    ) -> Dict[str, Any]:
+        """
+        Perform discovery with progressively smaller time ranges
+        
+        Args:
+            host: DICOM host
+            port: DICOM port
+            ae_title: Target AE title
+            end_time: End time for searches
+            original_hours: Original time range in hours
+            
+        Returns:
+            Dictionary with backoff discovery results
+        """
+        backoff_result = {
+            'total_studies': 0,
+            'total_series': 0,
+            'queries_performed': 0,
+            'final_time_range_hours': original_hours,
+            'queries': [],
+            'backoff_attempts': []
+        }
+        
+        # Try progressively smaller time ranges
+        for attempt, hours in enumerate(self.time_discovery_config['backoff_ranges']):
+            if attempt >= self.time_discovery_config['max_attempts']:
+                break
+                
+            logger.info(f"Backoff attempt {attempt + 1}: searching last {hours} hours")
+            
+            search_start = end_time - timedelta(hours=hours)
+            
+            query_result = await self._perform_cfind_time_query(
+                host, port, ae_title, search_start, end_time
+            )
+            
+            backoff_result['queries'].append(query_result)
+            backoff_result['queries_performed'] += 1
+            
+            backoff_attempt = {
+                'attempt': attempt + 1,
+                'hours': hours,
+                'study_count': query_result['study_count'],
+                'series_count': query_result['series_count'],
+                'success': query_result['success']
+            }
+            
+            backoff_result['backoff_attempts'].append(backoff_attempt)
+            
+            if query_result['success']:
+                study_count = query_result['study_count']
+                series_count = query_result['series_count']
+                
+                # If we get a non-limit result, use this as our final count
+                if not self._is_likely_limit_hit(study_count):
+                    backoff_result['total_studies'] = study_count
+                    backoff_result['total_series'] = series_count
+                    backoff_result['final_time_range_hours'] = hours
+                    
+                    logger.info(f"Backoff successful: found {study_count} studies in {hours} hours (non-limit result)")
+                    break
+                else:
+                    logger.info(f"Still hitting limit at {hours} hours ({study_count} studies)")
+            else:
+                logger.warning(f"Query failed at {hours} hours: {query_result['error']}")
+        
+        return backoff_result
+    
+    async def _perform_cfind_time_query(
+        self,
+        host: str,
+        port: int,
+        ae_title: str,
+        start_time: datetime,
+        end_time: datetime
+    ) -> Dict[str, Any]:
+        """
+        Perform a C-FIND query for a specific time range
+        
+        Args:
+            host: DICOM host
+            port: DICOM port
+            ae_title: Target AE title
+            start_time: Start of time range
+            end_time: End of time range
+            
+        Returns:
+            Dictionary with query results
+        """
+        try:
+            # Format dates for DICOM query (YYYYMMDD format)
+            start_date = start_time.strftime("%Y%m%d")
+            end_date = end_time.strftime("%Y%m%d")
+            date_range = f"{start_date}-{end_date}"
+            
+            logger.debug(f"Performing C-FIND query: {host}:{port} for date range {date_range}")
+            
+            # Use dcmtk findscu for the query
+            cmd = [
+                '/usr/bin/findscu',
+                '-aet', 'DISCOVERY_SCU',
+                '-aec', ae_title,
+                '-S',  # Study level query
+                '-k', 'QueryRetrieveLevel=STUDY',
+                '-k', f'StudyDate={date_range}',
+                '-k', 'PatientName=',
+                '-k', 'StudyInstanceUID=',
+                '-k', 'StudyDescription=',
+                '-k', 'StudyTime=',
+                '-k', 'PatientID=',
+                '-k', 'NumberOfStudyRelatedSeries=',
+                host,
+                str(port)
+            ]
+            
+            start_query_time = datetime.now()
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            end_query_time = datetime.now()
+            
+            query_duration = (end_query_time - start_query_time).total_seconds()
+            
+            if result.returncode == 0:
+                # Count studies and series from output
+                study_count = result.stdout.count('# Dicom-Data-Set')
+                
+                # Try to extract series count from NumberOfStudyRelatedSeries
+                series_count = 0
+                for line in result.stdout.split('\n'):
+                    if 'NumberOfStudyRelatedSeries' in line:
+                        # Extract number from the line
+                        match = re.search(r'\[(\d+)\]', line)
+                        if match:
+                            series_count += int(match.group(1))
+                
+                return {
+                    'success': True,
+                    'study_count': study_count,
+                    'series_count': series_count,
+                    'query_duration': query_duration,
+                    'date_range': date_range,
+                    'start_time': start_time.isoformat(),
+                    'end_time': end_time.isoformat(),
+                    'raw_output_length': len(result.stdout)
+                }
+            else:
+                error_msg = result.stderr or "Unknown error"
+                return {
+                    'success': False,
+                    'error': error_msg,
+                    'study_count': 0,
+                    'series_count': 0,
+                    'query_duration': query_duration,
+                    'date_range': date_range
+                }
+                
+        except subprocess.TimeoutExpired:
+            return {
+                'success': False,
+                'error': 'Query timeout',
+                'study_count': 0,
+                'series_count': 0,
+                'query_duration': 60.0,
+                'date_range': f"{start_date}-{end_date}"
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e),
+                'study_count': 0,
+                'series_count': 0,
+                'query_duration': 0.0,
+                'date_range': f"{start_date}-{end_date}" if 'start_date' in locals() else 'unknown'
+            }
+    
+    async def _store_time_discovery_result(self, result: Dict[str, Any]):
+        """
+        Store time-based discovery results in database
+        
+        Args:
+            result: Discovery result dictionary
+        """
+        try:
+            # Ensure table exists
+            await self._ensure_time_discovery_table()
+            
+            query = """
+                INSERT INTO dicom_time_discovery_results (
+                    host, port, ae_title, search_start, search_end, 
+                    hours_searched, total_studies, total_series,
+                    queries_performed, backoff_triggered, final_time_range_hours,
+                    discovery_method, result_data, discovered_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
+            
+            values = (
+                result['host'],
+                result['port'],
+                result['ae_title'],
+                result['search_start'],
+                result['search_end'],
+                result['hours_searched'],
+                result['total_studies'],
+                result['total_series'],
+                result['queries_performed'],
+                result['backoff_triggered'],
+                result['final_time_range_hours'],
+                result['discovery_method'],
+                json.dumps(result),
+                datetime.now().isoformat()
+            )
+            
+            await self.db_manager.execute_query(query, values)
+            logger.debug("Time discovery results stored in database")
+            
+        except Exception as e:
+            logger.error(f"Error storing time discovery results: {e}")
+    
+    async def _ensure_time_discovery_table(self):
+        """Ensure the time discovery results table exists"""
+        create_table_query = """
+            CREATE TABLE IF NOT EXISTS dicom_time_discovery_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                host TEXT NOT NULL,
+                port INTEGER NOT NULL,
+                ae_title TEXT NOT NULL,
+                search_start TEXT NOT NULL,
+                search_end TEXT NOT NULL,
+                hours_searched REAL,
+                total_studies INTEGER,
+                total_series INTEGER,
+                queries_performed INTEGER,
+                backoff_triggered BOOLEAN,
+                final_time_range_hours REAL,
+                discovery_method TEXT,
+                result_data TEXT,  -- JSON of full result
+                discovered_at TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """
+        
+        await self.db_manager.execute_query(create_table_query)
+        
+        # Create index for faster lookups
+        index_query = "CREATE INDEX IF NOT EXISTS idx_time_discovery_host_port ON dicom_time_discovery_results(host, port, discovered_at)"
+        await self.db_manager.execute_query(index_query)
 
 
 __all__ = ['DICOMDiscoveryService']
