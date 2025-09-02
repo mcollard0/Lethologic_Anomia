@@ -41,7 +41,6 @@ generated_dicom/
 *.dcm
 
 # Virtual environments
-venv_new/
 
 # SSL Keys
 etc/key/

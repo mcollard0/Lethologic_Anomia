@@ -10,10 +10,10 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Check if virtual environment exists
-if [ ! -d "venv_new" ]; then
-    echo -e "${RED}Error: Virtual environment 'venv_new' not found!${NC}"
-    echo "Please run: python3 -m venv venv_new"
-    echo "Then install dependencies: ./venv_new/bin/pip install -r requirements.txt"
+if [ ! -d "venv" ]; then
+    echo -e "${RED}Error: Virtual environment 'venv' not found!${NC}"
+    echo "Please run: python3 -m venv venv"
+    echo "Then install dependencies: ./venv/bin/pip install -r requirements.txt"
     exit 1
 fi
 
@@ -25,8 +25,8 @@ if [ ! -f "lethologic_anomia.py" ]; then
 fi
 
 echo -e "${GREEN}🏥 Lethologic Anomia - Medical Image Migration Service${NC}"
-echo -e "${YELLOW}Using virtual environment: venv_new${NC}"
+echo -e "${YELLOW}Using virtual environment: venv${NC}"
 echo ""
 
 # Activate virtual environment and run the program
-source venv_new/bin/activate && python lethologic_anomia.py "$@"
+source venv/bin/activate && python lethologic_anomia.py "$@"

@@ -17,10 +17,10 @@ A comprehensive Python-based medical imaging migration service with AI integrati
 
 2. **Create and activate virtual environment:**
    ```bash
-   python3 -m venv venv_new
-   source venv_new/bin/activate  # Linux/Mac
+   python3 -m venv venv
+   source venv/bin/activate  # Linux/Mac
    # or
-   venv_new\Scripts\activate     # Windows
+   venv\Scripts\activate     # Windows
    ```
 
 3. **Install dependencies:**
@@ -39,12 +39,12 @@ A comprehensive Python-based medical imaging migration service with AI integrati
 
 **Method 2: Direct execution with virtual environment**
 ```bash
-source venv_new/bin/activate && python lethologic_anomia.py --help
+source venv/bin/activate && python lethologic_anomia.py --help
 ```
 
 **Method 3: Using virtual environment Python directly**
 ```bash
-./venv_new/bin/python lethologic_anomia.py --help
+./venv/bin/python lethologic_anomia.py --help
 ```
 
 ## Features
@@ -126,7 +126,7 @@ Lethologic Anomia/
 ├── web/                 # Web interface assets
 ├── etc/                 # Sample data (gitignored)
 ├── generated_dicom/     # Test DICOM output (gitignored)
-└── venv_new/           # Virtual environment
+└── venv/               # Virtual environment
 ```
 
 ## Development
@@ -157,7 +157,7 @@ sudo ./lethologic_anomia.sh --uninstall    # Remove system service
 
 **Virtual environment issues**
 - Ensure you're using Python 3.8+
-- Recreate venv: `rm -rf venv_new && python3 -m venv venv_new`
+- Recreate venv: `rm -rf venv && python3 -m venv venv`
 
 **Permission errors**
 - Make lethologic_anomia.sh executable: `chmod +x lethologic_anomia.sh`
