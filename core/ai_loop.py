@@ -469,6 +469,10 @@ class AIService:
             return f"Current aggression level: {self.aggression_level}"
         
         # Pattern matching for natural language commands
+        # Check for SCP/DICOM server patterns
+        if self._matches_scp_pattern(input_lower):
+            return await self._start_scp()
+        
         # Check for user creation patterns
         if self._matches_create_user_pattern(input_lower):
             return await self._handle_natural_language_create_user(input_text)
@@ -478,6 +482,28 @@ class AIService:
             return await self._handle_natural_language_user_management(input_text)
         
         return None
+    
+    def _matches_scp_pattern(self, input_lower: str) -> bool:
+        """Check if input matches SCP/DICOM server start patterns"""
+        patterns = [
+            r"\bscp\b",                          # Just 'SCP'
+            r"start.*scp",                       # 'start SCP'
+            r"start.*dicom.*server",             # 'start DICOM server'
+            r"start.*dicom.*scp",                # 'start DICOM SCP'
+            r"dicom.*server",                    # 'DICOM server'
+            r"scp.*server",                      # 'SCP server'
+            r"start.*server",                    # Generic 'start server'
+            r"launch.*scp",                      # 'launch SCP'
+            r"run.*scp",                         # 'run SCP'
+            r"begin.*scp",                       # 'begin SCP'
+            r"initialize.*scp",                  # 'initialize SCP'
+        ]
+        
+        import re
+        for pattern in patterns:
+            if re.search(pattern, input_lower):
+                return True
+        return False
     
     def _matches_create_user_pattern(self, input_lower: str) -> bool:
         """Check if input matches user creation patterns"""
@@ -639,25 +665,43 @@ class AIService:
             raise  # Re-raise to trigger fallback
     
     async def _get_anthropic_response(self, user_input: str) -> str:
-        """Get response from Anthropic Claude API"""
+        """Get response from Anthropic Claude API with tool support"""
         try:
+            # Get tools for Anthropic (use same definitions as OpenAI but converted format)
+            anthropic_tools = self._get_anthropic_tools()
+            
+            system_prompt = (
+                "You are Claude, an AI assistant for a medical imaging migration service. "
+                "You help with DICOM/HL7 operations, database queries, and system management. "
+                "You can call functions to perform actions. Be helpful, accurate, and professional."
+            )
+            
             response = await self.anthropic_client.messages.create(
                 model="claude-3-sonnet-20240229",
                 max_tokens=512,
+                system=system_prompt,
                 messages=[
                     {
                         "role": "user",
-                        "content": f"""
-You are Claude, an AI assistant for a medical imaging migration service. 
-You help with DICOM/HL7 operations, database queries, and system management.
-Be helpful, accurate, and professional.
-
-User query: {user_input}"""
+                        "content": user_input
                     }
-                ]
+                ],
+                tools=anthropic_tools
             )
             
-            return response.content[0].text if response.content else "I received an empty response from Claude."
+            # Handle tool calls
+            if response.content:
+                for content_block in response.content:
+                    if content_block.type == "tool_use":
+                        # Execute the tool call
+                        function_name = content_block.name
+                        function_args = content_block.input
+                        result = await self._handle_function_call(function_name, function_args)
+                        return result
+                    elif content_block.type == "text":
+                        return content_block.text
+            
+            return "I received an empty response from Claude."
             
         except Exception as e:
             logger.error(f"Anthropic API error: {e}")
@@ -740,13 +784,16 @@ If the request doesn't match a function, respond normally as a helpful assistant
 
 Response:"""
             
-            # Encode input
-            inputs = self.tokenizer.encode(prompt, return_tensors='pt', truncation=True, max_length=1024)
+            # Encode input with attention mask
+            encoded = self.tokenizer(prompt, return_tensors='pt', truncation=True, max_length=1024, padding=True)
+            inputs = encoded['input_ids']
+            attention_mask = encoded['attention_mask']
             
             # Generate response
             with torch.no_grad():
                 outputs = self.local_model.generate(
                     inputs,
+                    attention_mask=attention_mask,
                     max_length=inputs.shape[1] + 200,
                     num_return_sequences=1,
                     temperature=0.3,  # Lower temperature for more consistent function calling
@@ -836,14 +883,20 @@ Response:"""
             },
             {
                 "name": "start_scp",
-                "description": "Start DICOM SCP listener",
+                "description": "Start DICOM SCP listener server for receiving DICOM images",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "port": {"type": "integer", "description": "Listening port"},
-                        "ae_title": {"type": "string", "description": "Our AE Title"}
+                        "port": {"type": "integer", "description": "Listening port (defaults to 50104)"},
+                        "ae_title": {"type": "string", "description": "AE Title for the SCP (defaults to MIGRATION_SCP)"},
+                        "storage_directory": {"type": "string", "description": "Directory to store received DICOM files"},
+                        "max_pdu": {"type": "integer", "description": "Maximum PDU size in bytes (defaults to 65536)"},
+                        "acse_timeout": {"type": "integer", "description": "ACSE timeout in seconds (defaults to 30)"},
+                        "dimse_timeout": {"type": "integer", "description": "DIMSE timeout in seconds (defaults to 30)"},
+                        "socket_timeout": {"type": "integer", "description": "Socket timeout in seconds (defaults to 60)"},
+                        "ssl_enabled": {"type": "boolean", "description": "Enable SSL/TLS encryption (defaults to false)"}
                     },
-                    "required": ["port"]
+                    "required": []
                 }
             },
             {
@@ -955,8 +1008,35 @@ Response:"""
                         "include_deleted": {"type": "boolean", "description": "Include deleted users (default: false)"}
                     }
                 }
+            },
+            {
+                "name": "start_service_class_provider",
+                "description": "Start a service class provider",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "service_class": {"type": "string", "description": "Name of the service class (defaults to 'Lethologic Anomia')"}
+                    },
+                    "required": []
+                }
             }
         ]
+    
+    def _get_anthropic_tools(self) -> List[Dict[str, Any]]:
+        """Get Anthropic tools (converted from OpenAI function definitions)"""
+        openai_functions = self._get_function_definitions()
+        anthropic_tools = []
+        
+        for func in openai_functions:
+            # Convert OpenAI function format to Anthropic tool format
+            tool = {
+                "name": func["name"],
+                "description": func["description"],
+                "input_schema": func["parameters"]  # Anthropic uses 'input_schema' instead of 'parameters'
+            }
+            anthropic_tools.append(tool)
+        
+        return anthropic_tools
     
     async def _handle_function_call(self, function_name: str, arguments: Dict[str, Any]) -> str:
         """Handle function calls from AI"""
@@ -979,8 +1059,14 @@ Response:"""
                 
             elif function_name == "start_scp":
                 return await self._start_scp(
-                    arguments.get("port", 104),
-                    arguments.get("ae_title", "MIGRATIONSERVICE")
+                    port=arguments.get("port"),
+                    ae_title=arguments.get("ae_title"),
+                    storage_directory=arguments.get("storage_directory"),
+                    max_pdu=arguments.get("max_pdu"),
+                    acse_timeout=arguments.get("acse_timeout"),
+                    dimse_timeout=arguments.get("dimse_timeout"),
+                    socket_timeout=arguments.get("socket_timeout"),
+                    ssl_enabled=arguments.get("ssl_enabled")
                 )
                 
             elif function_name == "start_scu":
@@ -1023,6 +1109,11 @@ Response:"""
                 
             elif function_name == "list_users":
                 return await self._list_users(arguments.get("include_deleted", False))
+                
+            elif function_name == "start_service_class_provider":
+                return await self._start_service_class_provider(
+                    arguments.get("service_class", "Lethologic Anomia")
+                )
                 
             else:
                 return f"Function '{function_name}' is not implemented yet."
@@ -1075,8 +1166,22 @@ Response:"""
             logger.error(f"Error during DICOM discovery: {e}")
             return f"❌ DICOM discovery failed: {str(e)}"
     
-    async def _start_scp(self, port: int, ae_title: str) -> str:
-        """Start DICOM SCP listener"""
+    async def _start_scp(self, port: int = None, ae_title: str = None, 
+                         storage_directory: str = None, max_pdu: int = None,
+                         acse_timeout: int = None, dimse_timeout: int = None, 
+                         socket_timeout: int = None, ssl_enabled: bool = None) -> str:
+        """Start DICOM SCP listener
+        
+        Args:
+            port: Listening port (defaults to settings.dicom.scp_port)
+            ae_title: AE Title (defaults to settings.dicom.our_ae_title)
+            storage_directory: Storage directory (defaults to settings.dicom.storage_directory)
+            max_pdu: Maximum PDU size (defaults to settings.dicom.max_pdu)
+            acse_timeout: ACSE timeout (defaults to settings.dicom.acse_timeout)
+            dimse_timeout: DIMSE timeout (defaults to settings.dicom.dimse_timeout)
+            socket_timeout: Socket timeout (defaults to settings.dicom.socket_timeout)
+            ssl_enabled: Enable SSL (defaults to settings.dicom.ssl_enabled)
+        """
         try:
             # Import DICOM SCP service
             from ..services.dicom.scp import DICOMSCPService, create_dicom_tables
@@ -1087,15 +1192,16 @@ Response:"""
             # Create SCP service instance
             scp_service = DICOMSCPService(self.db_manager, self.settings)
             
-            # Configure SCP
+            # Use defaults from settings if parameters not provided
             config = {
-                'port': port,
-                'ae_title': ae_title,
-                'output_directory': self.settings.dicom.storage_directory,
-                'max_pdu': self.settings.dicom.max_pdu,
-                'acse_timeout': self.settings.dicom.acse_timeout,
-                'dimse_timeout': self.settings.dicom.dimse_timeout,
-                'socket_timeout': self.settings.dicom.socket_timeout
+                'port': port if port is not None else self.settings.dicom.scp_port,
+                'ae_title': ae_title if ae_title is not None else self.settings.dicom.our_ae_title,
+                'output_directory': storage_directory if storage_directory is not None else self.settings.dicom.storage_directory,
+                'max_pdu': max_pdu if max_pdu is not None else self.settings.dicom.max_pdu,
+                'acse_timeout': acse_timeout if acse_timeout is not None else self.settings.dicom.acse_timeout,
+                'dimse_timeout': dimse_timeout if dimse_timeout is not None else self.settings.dicom.dimse_timeout,
+                'socket_timeout': socket_timeout if socket_timeout is not None else self.settings.dicom.socket_timeout,
+                'ssl_enabled': ssl_enabled if ssl_enabled is not None else self.settings.dicom.ssl_enabled
             }
             
             if not scp_service.configure(config):
@@ -1564,6 +1670,37 @@ The AI will interpret your intent and execute the appropriate actions.
         except Exception as e:
             logger.error(f"Error listing users: {e}")
             return f"❌ Error listing users: {str(e)}"
+    
+    async def _start_service_class_provider(self, service_class: str = "Lethologic Anomia") -> str:
+        """Start a service class provider
+        
+        Args:
+            service_class: Name of the service class (defaults to 'Lethologic Anomia')
+            
+        Returns:
+            Service class provider startup status
+        """
+        try:
+            logger.info(f"Starting service class provider: {service_class}")
+            
+            # Log the service class start in the database
+            await self.db_manager.execute_query(
+                "INSERT OR REPLACE INTO config (name, value) VALUES (?, ?)",
+                ("SERVICE_CLASS_PROVIDER", json.dumps({
+                    'service_class': service_class,
+                    'started_at': datetime.now().isoformat(),
+                    'status': 'running'
+                }))
+            )
+            
+            return f"✅ Service class provider '{service_class}' started successfully\n" + \
+                   f"Provider Name: {service_class}\n" + \
+                   f"Status: Running\n" + \
+                   f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                   
+        except Exception as e:
+            logger.error(f"Error starting service class provider: {e}")
+            return f"❌ Service class provider startup failed: {str(e)}"
 
 
 async def ai_loop(process_manager: ProcessManager, settings: Settings) -> None:

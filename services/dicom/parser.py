@@ -15,9 +15,9 @@ import concurrent.futures
 from pydicom import dcmread, Dataset
 from pydicom.errors import InvalidDicomError
 
-from ...core.logging import get_logger
-from ...core.database import DatabaseManager
-from ...core.config import Settings
+from core.custom_logging import get_logger
+from core.database import DatabaseManager
+from core.config import Settings
 
 logger = get_logger(__name__)
 

@@ -19,9 +19,9 @@ from pynetdicom.sop_class import *
 from pydicom import dcmread
 from pydicom.dataset import Dataset
 
-from ...core.logging import get_logger
-from ...core.database import DatabaseManager
-from ...core.config import Settings
+from core.custom_logging import get_logger
+from core.database import DatabaseManager
+from core.config import Settings
 
 logger = get_logger(__name__)
 
@@ -124,8 +124,8 @@ class DICOMSCPService:
             self.ae.dimse_timeout = self.config['dimse_timeout']
             self.ae.network_timeout = self.config['socket_timeout']
             
-            # Set up event handlers
-            self._setup_event_handlers()
+            # Set up event handlers (will be passed to start_server)
+            self.event_handlers = self._setup_event_handlers()
             
             self.is_configured = True
             logger.info(f"DICOM SCP configured: AE={self.config['ae_title']}, Port={self.config['port']}")
@@ -137,65 +137,51 @@ class DICOMSCPService:
     
     def _get_supported_storage_sops(self) -> List:
         """Get list of supported storage SOP classes"""
-        return [
-            # Verification
-            VerificationSOPClass,
-            
-            # Computed Radiography
-            ComputedRadiographyImageStorage,
-            
-            # Digital X-Ray
-            DigitalXRayImageStorageForPresentation,
-            DigitalXRayImageStorageForProcessing,
-            DigitalMammographyXRayImageStorageForPresentation,
-            DigitalMammographyXRayImageStorageForProcessing,
-            DigitalIntraOralXRayImageStorageForPresentation,
-            DigitalIntraOralXRayImageStorageForProcessing,
-            
-            # CT
-            CTImageStorage,
-            EnhancedCTImageStorage,
-            
-            # MR
-            MRImageStorage,
-            EnhancedMRImageStorage,
-            MRSpectroscopyStorage,
-            
-            # Ultrasound
-            UltrasoundImageStorage,
-            UltrasoundMultiframeImageStorage,
-            
-            # Secondary Capture
-            SecondaryCaptureImageStorage,
-            MultiframeSingleBitSecondaryCaptureImageStorage,
-            MultiframeGrayscaleByteSecondaryCaptureImageStorage,
-            MultiframeGrayscaleWordSecondaryCaptureImageStorage,
-            MultiframeTrueColorSecondaryCaptureImageStorage,
-            
-            # Nuclear Medicine
-            NuclearMedicineImageStorage,
-            
-            # PET
-            PositronEmissionTomographyImageStorage,
-            
-            # RT (Radiation Therapy)
-            RTImageStorage,
-            RTDoseStorage,
-            RTStructureSetStorage,
-            RTPlanStorage,
-            
-            # Structured Reports
-            BasicTextSRStorage,
-            EnhancedSRStorage,
-            ComprehensiveSRStorage,
-            
-            # Other common storage classes
-            XRayAngiographicImageStorage,
-            XRayRadiofluoroscopicImageStorage,
-            VLEndoscopicImageStorage,
-            VLMicroscopicImageStorage,
-            VLPhotographicImageStorage,
+        # Use a try/except approach to only include available SOP classes
+        sop_classes = []
+        
+        # Essential classes that should always be available
+        essential_classes = [
+            ('Verification', Verification),
+            ('CTImageStorage', CTImageStorage),
+            ('MRImageStorage', MRImageStorage),
+            ('UltrasoundImageStorage', UltrasoundImageStorage),
+            ('SecondaryCaptureImageStorage', SecondaryCaptureImageStorage),
         ]
+        
+        # Additional classes that may or may not be available
+        optional_classes = [
+            ('ComputedRadiographyImageStorage', 'ComputedRadiographyImageStorage'),
+            ('DigitalXRayImageStorageForPresentation', 'DigitalXRayImageStorageForPresentation'),
+            ('DigitalXRayImageStorageForProcessing', 'DigitalXRayImageStorageForProcessing'),
+            ('EnhancedCTImageStorage', 'EnhancedCTImageStorage'),
+            ('EnhancedMRImageStorage', 'EnhancedMRImageStorage'),
+            ('UltrasoundMultiFrameImageStorage', 'UltrasoundMultiFrameImageStorage'),
+            ('NuclearMedicineImageStorage', 'NuclearMedicineImageStorage'),
+            ('PositronEmissionTomographyImageStorage', 'PositronEmissionTomographyImageStorage'),
+            ('RTImageStorage', 'RTImageStorage'),
+            ('BasicTextSRStorage', 'BasicTextSRStorage'),
+            ('XRayAngiographicImageStorage', 'XRayAngiographicImageStorage'),
+        ]
+        
+        # Add essential classes
+        for name, sop_class in essential_classes:
+            try:
+                sop_classes.append(sop_class)
+            except NameError:
+                logger.warning(f"Essential SOP class not available: {name}")
+        
+        # Add optional classes if available
+        for name, class_name in optional_classes:
+            try:
+                sop_class = globals().get(class_name)
+                if sop_class:
+                    sop_classes.append(sop_class)
+            except (NameError, AttributeError):
+                logger.debug(f"Optional SOP class not available: {name}")
+        
+        logger.info(f"Configured {len(sop_classes)} DICOM SOP classes")
+        return sop_classes
     
     def _setup_event_handlers(self):
         """Setup event handlers for the DICOM AE"""
@@ -209,8 +195,7 @@ class DICOMSCPService:
             (evt.EVT_RELEASED, self._handle_released)
         ]
         
-        for event, handler in handlers:
-            self.ae.add_handler(event, handler)
+        return handlers
     
     def _handle_conn_open(self, event):
         """Handle connection opened event"""
@@ -243,20 +228,37 @@ class DICOMSCPService:
             # Get the dataset
             ds = event.dataset
             
-            # Generate unique filename
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            unique_id = str(uuid.uuid4())[:8]
-            filename = f"{timestamp}_{unique_id}.{self.config['file_extension']}"
-            file_path = Path(self.config['output_directory']) / filename
+            # Extract required DICOM tags (matching C++ implementation)
+            try:
+                sop_instance_uid = str(ds.SOPInstanceUID)
+                study_instance_uid = str(ds.StudyInstanceUID) 
+                study_date = str(ds.StudyDate)
+            except AttributeError as e:
+                logger.error(f"Missing required DICOM tags: {e}")
+                return 0xC000  # Cannot understand - missing required tags
             
-            # Create subdirectory based on patient ID and study date if available
-            patient_id = getattr(ds, 'PatientID', 'UNKNOWN')
-            study_date = getattr(ds, 'StudyDate', datetime.now().strftime('%Y%m%d'))
+            # Validate we have minimum required data (matching C++ validation)
+            if not sop_instance_uid or not study_instance_uid or not study_date:
+                logger.error("Required DICOM tags are empty")
+                return 0xC000  # Cannot understand
             
-            # Create patient/study subdirectory
-            subdir = Path(self.config['output_directory']) / patient_id / study_date
-            subdir.mkdir(parents=True, exist_ok=True)
-            file_path = subdir / filename
+            # Create directory structure: YYYY/MM/DD/SUID (matching C++ line 366-367)
+            try:
+                year = study_date[:4]
+                month = study_date[4:6] 
+                day = study_date[6:8]
+                
+                # Build path: output_directory/YYYY/MM/DD/StudyInstanceUID
+                subdir_path = Path(self.config['output_directory']) / year / month / day / study_instance_uid
+                subdir_path.mkdir(parents=True, exist_ok=True)
+                
+                # Create filename using SOP Instance UID + .DCM (matching C++ line 389-390)
+                filename = f"{sop_instance_uid}.DCM"
+                file_path = subdir_path / filename
+                
+            except (ValueError, IndexError) as e:
+                logger.error(f"Invalid study date format '{study_date}': {e}")
+                return 0xC000  # Cannot understand
             
             # Add File Meta Information if requested
             if self.config['write_meta_header']:
@@ -382,7 +384,7 @@ class DICOMSCPService:
             self.ae.start_server(
                 ('', self.config['port']),
                 block=True,
-                evt_handlers=None  # Already set up in configure()
+                evt_handlers=self.event_handlers
             )
             
         except Exception as e:
