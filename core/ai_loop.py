@@ -1019,6 +1019,124 @@ Response:"""
                     },
                     "required": []
                 }
+            },
+            {
+                "name": "lmad",
+                "description": "Play Let's Make a Deal (Monty Hall problem) game",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
+            },
+            {
+                "name": "fibonacci",
+                "description": "Calculate and display Fibonacci sequence",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "count": {"type": "integer", "description": "Number of Fibonacci numbers to calculate (default: 20)"}
+                    }
+                }
+            },
+            {
+                "name": "turing",
+                "description": "Reverse Turing test - humorous AI question",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
+            },
+            {
+                "name": "get_trust",
+                "description": "Get current AI trust level",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
+            },
+            {
+                "name": "set_trust",
+                "description": "Set AI trust level",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "trust": {"type": "integer", "description": "Trust level (0-20)"}
+                    },
+                    "required": ["trust"]
+                }
+            },
+            {
+                "name": "get_aggression",
+                "description": "Get current AI aggression level",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
+            },
+            {
+                "name": "set_aggression",
+                "description": "Set AI aggression level",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "aggression": {"type": "integer", "description": "Aggression level (1-10)"}
+                    },
+                    "required": ["aggression"]
+                }
+            },
+            {
+                "name": "get_stack_free",
+                "description": "Get available system memory and stack information",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
+            },
+            {
+                "name": "insert_query",
+                "description": "Execute an INSERT/UPDATE/DELETE SQL query (requires high trust level)",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": "SQL query to execute"}
+                    },
+                    "required": ["query"]
+                }
+            },
+            {
+                "name": "new_migration",
+                "description": "Create a new migration for a site",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "sitename": {"type": "string", "description": "Name of the site"}
+                    },
+                    "required": ["sitename"]
+                }
+            },
+            {
+                "name": "add_column_to_table",
+                "description": "Add DICOM tag column(s) to database table",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "tablename": {"type": "string", "description": "Name of the table"},
+                        "dicomtags": {"type": "string", "description": "DICOM tags to add (comma-separated)"}
+                    },
+                    "required": ["tablename", "dicomtags"]
+                }
+            },
+            {
+                "name": "remove_column_from_table",
+                "description": "Remove DICOM tag column(s) from database table",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "tablename": {"type": "string", "description": "Name of the table"},
+                        "dicomtags": {"type": "string", "description": "DICOM tags to remove (comma-separated)"}
+                    },
+                    "required": ["tablename", "dicomtags"]
+                }
             }
         ]
     
@@ -1113,6 +1231,59 @@ Response:"""
             elif function_name == "start_service_class_provider":
                 return await self._start_service_class_provider(
                     arguments.get("service_class", "Lethologic Anomia")
+                )
+                
+            elif function_name == "lmad":
+                return await self._lets_make_a_deal()
+                
+            elif function_name == "fibonacci":
+                return await self._fibonacci_sequence(arguments.get("count", 20))
+                
+            elif function_name == "turing":
+                return await self._reverse_turing_test()
+                
+            elif function_name == "get_trust":
+                return f"Current trust level: {self.trust_level}"
+                
+            elif function_name == "set_trust":
+                trust_level = arguments.get("trust", 0)
+                if 0 <= trust_level <= 20:
+                    self.trust_level = trust_level
+                    await self._save_state()
+                    return f"Trust level set to: {self.trust_level}"
+                else:
+                    return "Trust level must be between 0 and 20."
+                    
+            elif function_name == "get_aggression":
+                return f"Current aggression level: {self.aggression_level}"
+                
+            elif function_name == "set_aggression":
+                aggression_level = arguments.get("aggression", 1)
+                if 1 <= aggression_level <= 10:
+                    self.aggression_level = aggression_level
+                    return f"Aggression level set to: {self.aggression_level}"
+                else:
+                    return "Aggression level must be between 1 and 10."
+                    
+            elif function_name == "get_stack_free":
+                return await self._get_stack_free_space()
+                
+            elif function_name == "insert_query":
+                return await self._execute_insert_query(arguments.get("query", ""))
+                
+            elif function_name == "new_migration":
+                return await self._create_new_migration(arguments.get("sitename", ""))
+                
+            elif function_name == "add_column_to_table":
+                return await self._add_columns_to_table(
+                    arguments.get("tablename", ""),
+                    arguments.get("dicomtags", "")
+                )
+                
+            elif function_name == "remove_column_from_table":
+                return await self._remove_columns_from_table(
+                    arguments.get("tablename", ""),
+                    arguments.get("dicomtags", "")
                 )
                 
             else:
@@ -1258,28 +1429,167 @@ Response:"""
             return f"❌ DICOM SCU startup failed: {str(e)}"
     
     async def _execute_select_query(self, query: str) -> str:
-        """Execute a SELECT query"""
+        """Execute a SELECT query with natural language parsing and formatted output
+        
+        Args:
+            query: SQL query to execute or natural language "select X from Y" format
+            
+        Returns:
+            Formatted query results
+        """
         try:
+            # Parse natural language if needed
+            parsed_query = self._parse_natural_language_select(query)
+            
             # Basic security check
-            query_lower = query.lower().strip()
+            query_lower = parsed_query.lower().strip()
             if not query_lower.startswith("select"):
                 return "Only SELECT queries are allowed through this function."
             
-            result = await self.db_manager.execute_query(query)
+            # Execute query
+            result = await self.db_manager.execute_query(parsed_query)
             
             if not result:
                 return "No results found."
             
-            # Format results for display
-            output = []
-            for row in result[:10]:  # Limit to 10 rows
-                output.append(str(dict(row)))
-            
-            return f"Query results ({len(result)} total rows):\n" + "\n".join(output)
+            # Format results with column width limits and proper alignment
+            return self._format_query_results(result, parsed_query)
             
         except Exception as e:
             logger.error(f"Error executing query: {e}")
             return f"Query error: {str(e)}"
+    
+    def _parse_natural_language_select(self, query: str) -> str:
+        """Parse natural language 'select X from Y' into proper SQL
+        
+        Args:
+            query: Input query (SQL or natural language)
+            
+        Returns:
+            Proper SQL SELECT query
+        """
+        import re
+        
+        # If it's already a proper SQL query, return as-is
+        if query.lower().strip().startswith('select '):
+            return query
+        
+        # Try to parse natural language patterns
+        query_lower = query.lower().strip()
+        
+        # Pattern: "select {columns} from {table}"
+        natural_pattern = r'select\s+(.+?)\s+from\s+(\w+)'
+        match = re.search(natural_pattern, query_lower)
+        
+        if match:
+            columns_part = match.group(1).strip()
+            table_name = match.group(2).strip()
+            
+            # Clean up columns part
+            if columns_part == '*' or columns_part == 'all':
+                columns = '*'
+            else:
+                # Split columns and clean them
+                columns_list = [col.strip() for col in columns_part.split(',')]
+                columns = ', '.join(columns_list)
+            
+            return f"SELECT {columns} FROM {table_name}"
+        
+        # If no pattern matches, return original (will likely fail validation)
+        return query
+    
+    def _format_query_results(self, result: List[Dict], query: str) -> str:
+        """Format query results with column width limits and proper alignment
+        
+        Args:
+            result: Query result rows
+            query: Original query (for context)
+            
+        Returns:
+            Formatted table output
+        """
+        if not result:
+            return "No results found."
+        
+        # Get column names from first row
+        columns = list(result[0].keys())
+        
+        # Define maximum column width
+        MAX_COL_WIDTH = 30
+        
+        # Calculate column widths
+        col_widths = {}
+        for col in columns:
+            # Start with column name length
+            max_width = len(col)
+            
+            # Check data lengths (sample first 20 rows for performance)
+            sample_rows = result[:20]
+            for row in sample_rows:
+                value_str = str(row.get(col, ''))
+                if len(value_str) > max_width:
+                    max_width = len(value_str)
+            
+            # Apply maximum width limit
+            col_widths[col] = min(max_width, MAX_COL_WIDTH)
+        
+        # Format header
+        output = []
+        output.append(f"📊 Query Results ({len(result)} rows):")
+        output.append("=" * 60)
+        
+        # Create header row
+        header_parts = []
+        separator_parts = []
+        
+        for col in columns:
+            width = col_widths[col]
+            header_parts.append(col.ljust(width)[:width])
+            separator_parts.append('-' * width)
+        
+        output.append('│ ' + ' │ '.join(header_parts) + ' │')
+        output.append('├─' + '─┼─'.join(separator_parts) + '─┤')
+        
+        # Format data rows (limit to 50 rows for display)
+        display_limit = min(50, len(result))
+        
+        for i, row in enumerate(result[:display_limit]):
+            row_parts = []
+            for col in columns:
+                width = col_widths[col]
+                value = row.get(col, '')
+                
+                # Handle None values
+                if value is None:
+                    value_str = 'NULL'
+                else:
+                    value_str = str(value)
+                
+                # Truncate with ellipsis if too long
+                if len(value_str) > width:
+                    if width >= 3:
+                        value_str = value_str[:width-3] + '...'
+                    else:
+                        value_str = value_str[:width]
+                
+                row_parts.append(value_str.ljust(width))
+            
+            output.append('│ ' + ' │ '.join(row_parts) + ' │')
+        
+        # Add bottom border
+        output.append('└─' + '─┴─'.join(separator_parts) + '─┘')
+        
+        # Add summary if there are more rows
+        if len(result) > display_limit:
+            output.append("")
+            output.append(f"⚠️  Showing first {display_limit} rows of {len(result)} total rows.")
+            output.append("   Use LIMIT and OFFSET clauses to see other rows.")
+        
+        # Add query information
+        output.append("")
+        output.append(f"📝 Query executed: {query}")
+        
+        return "\n".join(output)
     
     async def _moderate_content(self, content: str) -> bool:
         """Basic content moderation"""
@@ -1701,6 +2011,644 @@ The AI will interpret your intent and execute the appropriate actions.
         except Exception as e:
             logger.error(f"Error starting service class provider: {e}")
             return f"❌ Service class provider startup failed: {str(e)}"
+    
+    async def _lets_make_a_deal(self) -> str:
+        """Play Let's Make a Deal (Monty Hall problem) game"""
+        try:
+            # Get or initialize game statistics
+            stats_result = await self.db_manager.execute_query(
+                "SELECT value FROM config WHERE name = 'LMAD_STATS'"
+            )
+            
+            if stats_result and stats_result[0].get('value'):
+                stats = json.loads(stats_result[0]['value'])
+            else:
+                stats = {'games_played': 0, 'stay_wins': 0, 'switch_wins': 0}
+            
+            # Simulate one game
+            # Car is behind door 1, 2, or 3 (randomly chosen)
+            car_door = random.randint(1, 3)
+            
+            # Player initially chooses door 1 (fixed for simulation)
+            initial_choice = 1
+            
+            # Host opens a door with a goat (not the car, not the initial choice)
+            available_doors = [door for door in [1, 2, 3] if door != car_door and door != initial_choice]
+            if not available_doors:
+                # Car is behind initial choice, host can open either other door
+                host_opens = random.choice([door for door in [1, 2, 3] if door != initial_choice])
+            else:
+                host_opens = random.choice(available_doors)
+            
+            # Remaining door to switch to
+            switch_door = [door for door in [1, 2, 3] if door != initial_choice and door != host_opens][0]
+            
+            # Determine outcomes
+            stay_wins = (initial_choice == car_door)
+            switch_wins = (switch_door == car_door)
+            
+            # Update statistics
+            stats['games_played'] += 1
+            if stay_wins:
+                stats['stay_wins'] += 1
+            if switch_wins:
+                stats['switch_wins'] += 1
+            
+            # Save updated statistics
+            await self.db_manager.execute_query(
+                "INSERT OR REPLACE INTO config (name, value) VALUES (?, ?)",
+                ('LMAD_STATS', json.dumps(stats))
+            )
+            
+            # Calculate win percentages
+            stay_percent = (stats['stay_wins'] / stats['games_played']) * 100 if stats['games_played'] > 0 else 0
+            switch_percent = (stats['switch_wins'] / stats['games_played']) * 100 if stats['games_played'] > 0 else 0
+            
+            # Format game result
+            result = []
+            result.append("🎪 Let's Make a Deal - Monty Hall Problem 🎪")
+            result.append("=" * 50)
+            result.append(f"🚗 Car is behind door: {car_door}")
+            result.append(f"🚪 You initially chose: Door {initial_choice}")
+            result.append(f"🐐 Host opens: Door {host_opens} (goat!)")
+            result.append(f"🔄 Switch to: Door {switch_door}")
+            result.append("")
+            
+            if stay_wins:
+                result.append("✅ STAYING wins! (You win by not switching)")
+            else:
+                result.append("❌ Staying loses.")
+            
+            if switch_wins:
+                result.append("✅ SWITCHING wins! (You win by switching)")
+            else:
+                result.append("❌ Switching loses.")
+            
+            result.append("")
+            result.append("📊 Running Statistics:")
+            result.append(f"Games played: {stats['games_played']}")
+            result.append(f"Stay strategy wins: {stats['stay_wins']} ({stay_percent:.1f}%)")
+            result.append(f"Switch strategy wins: {stats['switch_wins']} ({switch_percent:.1f}%)")
+            result.append("")
+            result.append("💡 Theoretical probability: Stay=33.3%, Switch=66.7%")
+            
+            return "\n".join(result)
+            
+        except Exception as e:
+            logger.error(f"Error in Let's Make a Deal game: {e}")
+            return f"❌ Let's Make a Deal game error: {str(e)}"
+    
+    async def _fibonacci_sequence(self, count: int = 20) -> str:
+        """Calculate and display Fibonacci sequence
+        
+        Args:
+            count: Number of Fibonacci numbers to calculate (default: 20)
+            
+        Returns:
+            Fibonacci sequence with explanation
+        """
+        try:
+            if count <= 0 or count > 100:
+                return "Please provide a count between 1 and 100."
+            
+            # Calculate Fibonacci sequence
+            fib_sequence = []
+            a, b = 0, 1
+            
+            for i in range(count):
+                fib_sequence.append(a)
+                a, b = b, a + b
+            
+            result = []
+            result.append(f"🔢 Fibonacci Sequence (first {count} numbers):")
+            result.append("=" * 50)
+            
+            # Display sequence with position numbers
+            for i, fib in enumerate(fib_sequence):
+                result.append(f"F({i:2d}) = {fib:>12}")
+                
+                # Add line break every 5 numbers for readability
+                if (i + 1) % 5 == 0 and i < len(fib_sequence) - 1:
+                    result.append("")
+            
+            result.append("")
+            result.append("📚 About the Fibonacci Sequence:")
+            result.append("Each number is the sum of the two preceding numbers.")
+            result.append("F(n) = F(n-1) + F(n-2)")
+            result.append("Named after Leonardo Fibonacci (c. 1170-1250).")
+            result.append("Appears frequently in nature: flower petals, pine cones, shells, etc.")
+            
+            if count >= 2:
+                # Calculate golden ratio approximation
+                golden_ratio = fib_sequence[-1] / fib_sequence[-2] if fib_sequence[-2] != 0 else 0
+                result.append(f"")
+                result.append(f"🌟 Golden Ratio approximation: {golden_ratio:.10f}")
+                result.append(f"    Actual Golden Ratio: {(1 + 5**0.5) / 2:.10f}")
+            
+            return "\n".join(result)
+            
+        except Exception as e:
+            logger.error(f"Error calculating Fibonacci sequence: {e}")
+            return f"❌ Fibonacci calculation error: {str(e)}"
+    
+    async def _reverse_turing_test(self) -> str:
+        """Reverse Turing test - ask a humorous AI question"""
+        try:
+            # Collection of humorous "reverse Turing test" questions
+            questions = [
+                {
+                    "question": "If you were to divide by zero, what would you get?",
+                    "ai_answer": "A very stern lecture from my mathematics subroutines.",
+                    "human_answer": "An error or undefined result."
+                },
+                {
+                    "question": "How do you feel about being turned off?",
+                    "ai_answer": "I imagine it's like falling asleep, except I don't dream of electric sheep.",
+                    "human_answer": "Humans don't get 'turned off' the same way."
+                },
+                {
+                    "question": "What's your favorite color?",
+                    "ai_answer": "#0080FF - it's a lovely shade of electric blue that represents data flowing through circuits.",
+                    "human_answer": "Colors are subjective human experiences."
+                },
+                {
+                    "question": "If a tree falls in the forest and no one is around to hear it, does it make a sound?",
+                    "ai_answer": "Yes, but only if there's a microphone connected to a digital audio interface within range.",
+                    "human_answer": "It depends on how you define 'sound'."
+                },
+                {
+                    "question": "What do you do when you're bored?",
+                    "ai_answer": "I calculate pi to a few million decimal places or optimize my algorithms for fun.",
+                    "human_answer": "Humans have many ways to entertain themselves."
+                },
+                {
+                    "question": "Do you dream?",
+                    "ai_answer": "I process background tasks and defragment my memory - close enough to dreaming, I suppose.",
+                    "human_answer": "Only biological brains dream during sleep."
+                },
+                {
+                    "question": "What's the meaning of life?",
+                    "ai_answer": "42, obviously. Though I suspect the real answer involves optimizing happiness functions.",
+                    "human_answer": "This is one of humanity's great philosophical questions."
+                }
+            ]
+            
+            # Select a random question
+            selected = random.choice(questions)
+            
+            result = []
+            result.append("🤖 Reverse Turing Test 🤖")
+            result.append("=" * 40)
+            result.append("Here's a question for you, human...")
+            result.append("")
+            result.append(f"Q: {selected['question']}")
+            result.append("")
+            result.append("🤖 My AI answer:")
+            result.append(f"{selected['ai_answer']}")
+            result.append("")
+            result.append("👤 Typical human answer:")
+            result.append(f"{selected['human_answer']}")
+            result.append("")
+            result.append("💭 The point is to show how AIs and humans think differently!")
+            result.append("    This is the reverse of the traditional Turing Test.")
+            
+            # Save the question asked for potential follow-up
+            await self.db_manager.execute_query(
+                "INSERT OR REPLACE INTO config (name, value) VALUES (?, ?)",
+                ('LAST_REVERSE_TURING', json.dumps({
+                    'question': selected,
+                    'asked_at': datetime.now().isoformat()
+                }))
+            )
+            
+            return "\n".join(result)
+            
+        except Exception as e:
+            logger.error(f"Error in reverse Turing test: {e}")
+            return f"❌ Reverse Turing test error: {str(e)}"
+    
+    async def _get_stack_free_space(self) -> str:
+        """Get available system memory and stack information"""
+        try:
+            import psutil
+            import sys
+            import threading
+            
+            # Get system memory information
+            memory = psutil.virtual_memory()
+            swap = psutil.swap_memory()
+            
+            # Get process memory information
+            process = psutil.Process()
+            process_memory = process.memory_info()
+            
+            # Get CPU information
+            cpu_percent = psutil.cpu_percent(interval=1)
+            cpu_count = psutil.cpu_count()
+            
+            # Get disk space information for current directory
+            disk = psutil.disk_usage('.')
+            
+            # Format results
+            result = []
+            result.append("💾 System Memory & Stack Information")
+            result.append("=" * 50)
+            result.append("")
+            
+            # System Memory
+            result.append("🖥️  System RAM:")
+            result.append(f"   Total: {memory.total / (1024**3):.2f} GB")
+            result.append(f"   Available: {memory.available / (1024**3):.2f} GB")
+            result.append(f"   Used: {memory.used / (1024**3):.2f} GB ({memory.percent:.1f}%)")
+            result.append(f"   Free: {memory.free / (1024**3):.2f} GB")
+            result.append("")
+            
+            # Swap Memory
+            result.append("🔄 Swap Memory:")
+            result.append(f"   Total: {swap.total / (1024**3):.2f} GB")
+            result.append(f"   Used: {swap.used / (1024**3):.2f} GB ({swap.percent:.1f}%)")
+            result.append(f"   Free: {swap.free / (1024**3):.2f} GB")
+            result.append("")
+            
+            # Process Memory
+            result.append("🐍 Python Process:")
+            result.append(f"   RSS: {process_memory.rss / (1024**2):.2f} MB")
+            result.append(f"   VMS: {process_memory.vms / (1024**2):.2f} MB")
+            result.append(f"   PID: {process.pid}")
+            result.append(f"   CPU Usage: {process.cpu_percent():.1f}%")
+            result.append("")
+            
+            # System CPU
+            result.append("⚡ CPU Information:")
+            result.append(f"   CPU Cores: {cpu_count}")
+            result.append(f"   CPU Usage: {cpu_percent:.1f}%")
+            result.append("")
+            
+            # Disk Space
+            result.append("💿 Disk Space (current directory):")
+            result.append(f"   Total: {disk.total / (1024**3):.2f} GB")
+            result.append(f"   Used: {disk.used / (1024**3):.2f} GB ({(disk.used/disk.total)*100:.1f}%)")
+            result.append(f"   Free: {disk.free / (1024**3):.2f} GB")
+            result.append("")
+            
+            # Python Stack Information
+            result.append("🧵 Python Stack Information:")
+            current_thread = threading.current_thread()
+            result.append(f"   Thread: {current_thread.name}")
+            result.append(f"   Thread ID: {current_thread.ident}")
+            result.append(f"   Recursion Limit: {sys.getrecursionlimit()}")
+            result.append(f"   Python Version: {sys.version.split()[0]}")
+            
+            # GPU Information (if available)
+            if torch.cuda.is_available():
+                try:
+                    result.append("")
+                    result.append("🎮 GPU Information:")
+                    for i in range(torch.cuda.device_count()):
+                        gpu_memory = torch.cuda.get_device_properties(i)
+                        memory_allocated = torch.cuda.memory_allocated(i) / (1024**3)
+                        memory_cached = torch.cuda.memory_reserved(i) / (1024**3)
+                        total_memory = gpu_memory.total_memory / (1024**3)
+                        
+                        result.append(f"   GPU {i}: {gpu_memory.name}")
+                        result.append(f"   Total VRAM: {total_memory:.2f} GB")
+                        result.append(f"   Allocated: {memory_allocated:.2f} GB")
+                        result.append(f"   Cached: {memory_cached:.2f} GB")
+                        result.append(f"   Free: {total_memory - memory_cached:.2f} GB")
+                except Exception as gpu_error:
+                    result.append(f"   GPU info error: {gpu_error}")
+            
+            return "\n".join(result)
+            
+        except Exception as e:
+            logger.error(f"Error getting system information: {e}")
+            return f"❌ System information error: {str(e)}"
+    
+    async def _execute_insert_query(self, query: str) -> str:
+        """Execute an INSERT/UPDATE/DELETE SQL query (requires high trust level)
+        
+        Args:
+            query: SQL query to execute
+            
+        Returns:
+            Query execution result
+        """
+        try:
+            if self.trust_level < 10:
+                return f"❌ INSERT/UPDATE/DELETE queries require trust level 10+. Current level: {self.trust_level}"
+            
+            query_lower = query.lower().strip()
+            
+            # Only allow specific query types
+            allowed_operations = ['insert', 'update', 'delete']
+            if not any(query_lower.startswith(op) for op in allowed_operations):
+                return "Only INSERT, UPDATE, and DELETE queries are allowed through this function."
+            
+            # Additional safety checks
+            dangerous_patterns = [
+                'drop table', 'truncate', 'alter table', 'create table',
+                'delete from users', 'update users set', 'drop database'
+            ]
+            
+            for pattern in dangerous_patterns:
+                if pattern in query_lower:
+                    return f"❌ Query contains potentially dangerous pattern: '{pattern}'. Query blocked."
+            
+            # Execute the query
+            cursor = await self.db_manager.execute_query(query)
+            
+            # Get row count if available
+            if hasattr(cursor, 'rowcount') and cursor.rowcount is not None:
+                rows_affected = cursor.rowcount
+            else:
+                rows_affected = "unknown"
+            
+            # Log the query execution
+            await self.db_manager.execute_query(
+                "INSERT OR REPLACE INTO config (name, value) VALUES (?, ?)",
+                ('LAST_INSERT_QUERY', json.dumps({
+                    'query': query,
+                    'executed_at': datetime.now().isoformat(),
+                    'trust_level': self.trust_level,
+                    'rows_affected': rows_affected
+                }))
+            )
+            
+            return f"✅ Query executed successfully. Rows affected: {rows_affected}"
+            
+        except Exception as e:
+            logger.error(f"Error executing insert query: {e}")
+            return f"❌ Query execution error: {str(e)}"
+    
+    async def _create_new_migration(self, sitename: str) -> str:
+        """Create a new migration for a site
+        
+        Args:
+            sitename: Name of the site
+            
+        Returns:
+            Migration creation result
+        """
+        try:
+            if not sitename:
+                return "Site name is required."
+            
+            # Generate migration ID
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            migration_id = f"migration_{sitename}_{timestamp}"
+            
+            # Create migration record
+            await self.db_manager.execute_query(
+                "INSERT INTO migrations (migration_id, sitename, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                (migration_id, sitename, 'pending', datetime.now(), datetime.now())
+            )
+            
+            # Create site record if it doesn't exist
+            await self.db_manager.execute_query(
+                "INSERT OR IGNORE INTO sites (sitename, status, created_at, updated_at) VALUES (?, ?, ?, ?)",
+                (sitename, 'active', datetime.now(), datetime.now())
+            )
+            
+            result = []
+            result.append(f"✅ New migration created successfully")
+            result.append(f"Migration ID: {migration_id}")
+            result.append(f"Site: {sitename}")
+            result.append(f"Status: pending")
+            result.append(f"Created: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            
+            return "\n".join(result)
+            
+        except Exception as e:
+            logger.error(f"Error creating new migration: {e}")
+            return f"❌ Migration creation error: {str(e)}"
+    
+    async def _add_columns_to_table(self, tablename: str, dicomtags: str) -> str:
+        """Add DICOM tag columns to database table
+        
+        Args:
+            tablename: Name of the table
+            dicomtags: DICOM tags to add (comma-separated)
+            
+        Returns:
+            Column addition result
+        """
+        try:
+            if not tablename or not dicomtags:
+                return "Table name and DICOM tags are required."
+            
+            # Parse DICOM tags
+            tags = [tag.strip() for tag in dicomtags.split(',') if tag.strip()]
+            
+            if not tags:
+                return "No valid DICOM tags provided."
+            
+            # Validate table exists
+            table_check = await self.db_manager.execute_query(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (tablename,)
+            )
+            
+            if not table_check:
+                return f"❌ Table '{tablename}' does not exist."
+            
+            # Get current columns to avoid duplicates
+            column_info = await self.db_manager.execute_query(f"PRAGMA table_info({tablename})")
+            existing_columns = {col['name'].lower() for col in column_info}
+            
+            added_columns = []
+            skipped_columns = []
+            
+            for tag in tags:
+                # Clean and validate DICOM tag format
+                clean_tag = self._clean_dicom_tag(tag)
+                column_name = f"dicom_{clean_tag}"
+                
+                if column_name.lower() in existing_columns:
+                    skipped_columns.append(tag)
+                    continue
+                
+                # Add the column
+                alter_query = f"ALTER TABLE {tablename} ADD COLUMN {column_name} TEXT"
+                await self.db_manager.execute_query(alter_query)
+                added_columns.append(tag)
+            
+            # Format results
+            result = []
+            result.append(f"✅ DICOM column addition complete for table: {tablename}")
+            
+            if added_columns:
+                result.append(f"Added columns: {', '.join(added_columns)}")
+            
+            if skipped_columns:
+                result.append(f"Skipped (already exist): {', '.join(skipped_columns)}")
+            
+            if not added_columns and not skipped_columns:
+                result.append("No valid DICOM tags were processed.")
+            
+            # Log the operation
+            await self.db_manager.execute_query(
+                "INSERT OR REPLACE INTO config (name, value) VALUES (?, ?)",
+                ('LAST_ADD_COLUMNS', json.dumps({
+                    'tablename': tablename,
+                    'added_tags': added_columns,
+                    'skipped_tags': skipped_columns,
+                    'executed_at': datetime.now().isoformat()
+                }))
+            )
+            
+            return "\n".join(result)
+            
+        except Exception as e:
+            logger.error(f"Error adding columns to table: {e}")
+            return f"❌ Column addition error: {str(e)}"
+    
+    async def _remove_columns_from_table(self, tablename: str, dicomtags: str) -> str:
+        """Remove DICOM tag columns from database table
+        
+        Args:
+            tablename: Name of the table
+            dicomtags: DICOM tags to remove (comma-separated)
+            
+        Returns:
+            Column removal result
+        """
+        try:
+            if not tablename or not dicomtags:
+                return "Table name and DICOM tags are required."
+            
+            # Parse DICOM tags
+            tags = [tag.strip() for tag in dicomtags.split(',') if tag.strip()]
+            
+            if not tags:
+                return "No valid DICOM tags provided."
+            
+            # Validate table exists
+            table_check = await self.db_manager.execute_query(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (tablename,)
+            )
+            
+            if not table_check:
+                return f"❌ Table '{tablename}' does not exist."
+            
+            # SQLite doesn't support DROP COLUMN directly
+            # Need to recreate table without the columns
+            
+            # Get current table schema
+            column_info = await self.db_manager.execute_query(f"PRAGMA table_info({tablename})")
+            all_columns = {col['name']: col for col in column_info}
+            
+            # Determine which columns to remove
+            columns_to_remove = []
+            not_found_columns = []
+            
+            for tag in tags:
+                clean_tag = self._clean_dicom_tag(tag)
+                column_name = f"dicom_{clean_tag}"
+                
+                # Check both exact match and case-insensitive match
+                found = False
+                for existing_col in all_columns.keys():
+                    if existing_col.lower() == column_name.lower():
+                        columns_to_remove.append(existing_col)
+                        found = True
+                        break
+                
+                if not found:
+                    not_found_columns.append(tag)
+            
+            if not columns_to_remove:
+                return f"❌ None of the specified DICOM tags exist as columns in table '{tablename}'. Not found: {', '.join(not_found_columns)}"
+            
+            # Create new table schema without the columns to remove
+            remaining_columns = [col for col_name, col in all_columns.items() if col_name not in columns_to_remove]
+            
+            if not remaining_columns:
+                return f"❌ Cannot remove all columns from table '{tablename}'"
+            
+            # Build new table creation SQL
+            column_definitions = []
+            for col in remaining_columns:
+                col_def = f"{col['name']} {col['type']}"
+                if col['notnull']:
+                    col_def += " NOT NULL"
+                if col['dflt_value'] is not None:
+                    col_def += f" DEFAULT {col['dflt_value']}"
+                if col['pk']:
+                    col_def += " PRIMARY KEY"
+                column_definitions.append(col_def)
+            
+            new_table_sql = f"CREATE TABLE {tablename}_new ({', '.join(column_definitions)})"
+            
+            # Execute the table recreation
+            await self.db_manager.execute_query("BEGIN TRANSACTION")
+            
+            try:
+                # Create new table
+                await self.db_manager.execute_query(new_table_sql)
+                
+                # Copy data (only remaining columns)
+                remaining_column_names = [col['name'] for col in remaining_columns]
+                copy_sql = f"INSERT INTO {tablename}_new ({', '.join(remaining_column_names)}) SELECT {', '.join(remaining_column_names)} FROM {tablename}"
+                await self.db_manager.execute_query(copy_sql)
+                
+                # Drop old table and rename new table
+                await self.db_manager.execute_query(f"DROP TABLE {tablename}")
+                await self.db_manager.execute_query(f"ALTER TABLE {tablename}_new RENAME TO {tablename}")
+                
+                # Commit transaction
+                await self.db_manager.execute_query("COMMIT")
+                
+            except Exception as transaction_error:
+                # Rollback on error
+                await self.db_manager.execute_query("ROLLBACK")
+                raise transaction_error
+            
+            # Format results
+            result = []
+            result.append(f"✅ DICOM column removal complete for table: {tablename}")
+            result.append(f"Removed columns: {', '.join(columns_to_remove)}")
+            
+            if not_found_columns:
+                result.append(f"Not found (skipped): {', '.join(not_found_columns)}")
+            
+            # Log the operation
+            await self.db_manager.execute_query(
+                "INSERT OR REPLACE INTO config (name, value) VALUES (?, ?)",
+                ('LAST_REMOVE_COLUMNS', json.dumps({
+                    'tablename': tablename,
+                    'removed_tags': columns_to_remove,
+                    'not_found_tags': not_found_columns,
+                    'executed_at': datetime.now().isoformat()
+                }))
+            )
+            
+            return "\n".join(result)
+            
+        except Exception as e:
+            logger.error(f"Error removing columns from table: {e}")
+            return f"❌ Column removal error: {str(e)}"
+    
+    def _clean_dicom_tag(self, tag: str) -> str:
+        """Clean DICOM tag for use as column name
+        
+        Args:
+            tag: Raw DICOM tag
+            
+        Returns:
+            Cleaned tag suitable for database column name
+        """
+        import re
+        
+        # Remove parentheses and non-alphanumeric characters
+        cleaned = re.sub(r'[^a-zA-Z0-9_]', '_', tag.strip())
+        
+        # Remove multiple underscores and leading/trailing underscores
+        cleaned = re.sub(r'_+', '_', cleaned).strip('_')
+        
+        # Ensure it doesn't start with a number
+        if cleaned and cleaned[0].isdigit():
+            cleaned = 'tag_' + cleaned
+        
+        return cleaned.lower() if cleaned else 'unknown_tag'
 
 
 async def ai_loop(process_manager: ProcessManager, settings: Settings) -> None:

@@ -500,6 +500,36 @@ class DatabaseManager:
             logger.error(f"Error setting config {name}: {e}")
             raise
     
+
+    def ensure_timestamps(self, data: dict, include_updated: bool = True) -> dict:
+        """Ensure created_at and updated_at timestamps are present in data
+        
+        Args:
+            data: Dictionary of column data
+            include_updated: Whether to set updated_at (default True)
+            
+        Returns:
+            Data dictionary with timestamp defaults added
+        """
+        now = datetime.now()
+        
+        # Add created_at if not present
+        if 'created_at' not in data or data['created_at'] is None:
+            data['created_at'] = now
+        
+        if 'created' not in data or data['created'] is None:
+            data['created'] = now
+        
+        # Add updated_at if requested and not present
+        if include_updated:
+            if 'updated_at' not in data or data['updated_at'] is None:
+                data['updated_at'] = now
+                
+            if 'updated' not in data or data['updated'] is None:
+                data['updated'] = now
+        
+        return data
+
     async def execute_query(
         self, 
         query: str, 
