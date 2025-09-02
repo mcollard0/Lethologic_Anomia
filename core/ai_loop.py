@@ -1,3 +1,4 @@
+
 """
 AI Loop Module - Core AI processing loop
 
@@ -152,13 +153,33 @@ class AIService:
             
             logger.info(f"Loading local model: {model_name}")
             
-            # Load tokenizer and model with optimizations
+            # Get optimal model configuration based on available memory
+            model_config = self._get_optimal_model_config(model_name)
+            logger.info(f"Selected precision: {model_config['precision']} ({model_config['reason']})")
+            
+            # Load tokenizer
             self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+            
+            # Load model with memory-optimized settings
+            load_kwargs = {
+                'torch_dtype': model_config['torch_dtype'],
+                'device_map': model_config['device_map'],
+                'low_cpu_mem_usage': True
+            }
+            
+            # Add quantization if needed
+            if model_config.get('load_in_8bit', False):
+                load_kwargs['load_in_8bit'] = True
+                logger.info("Using 8-bit quantization for memory efficiency")
+            
+            # Add memory limits if specified
+            if model_config.get('max_memory'):
+                load_kwargs['max_memory'] = model_config['max_memory']
+                logger.info(f"Memory limit: {model_config['max_memory']}")
+            
             self.local_model = AutoModelForCausalLM.from_pretrained(
                 model_name,
-                torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-                device_map="auto" if torch.cuda.is_available() else None,
-                low_cpu_mem_usage=True
+                **load_kwargs
             )
             
             # Add pad token if it doesn't exist
@@ -184,6 +205,85 @@ class AIService:
             except Exception as fallback_error:
                 logger.warning(f"Failed to initialize fallback model: {fallback_error}")
                 # Continue without local model - will use API only
+    
+    def _get_optimal_model_config(self, model_name: str) -> dict:
+        """Determine optimal model configuration based on available system memory
+        
+        Args:
+            model_name: Name of the model to load
+            
+        Returns:
+            Dict with model configuration parameters
+        """
+        try:
+            import psutil
+            
+            # Get available system memory
+            memory = psutil.virtual_memory()
+            total_gb = memory.total / (1024 ** 3)  # Total RAM in GB
+            available_gb = memory.available / (1024 ** 3)  # Available RAM in GB
+            used_percent = memory.percent
+            
+            logger.info(f"System memory: {total_gb:.1f}GB total, {available_gb:.1f}GB available ({used_percent}% used)")
+            
+            # Estimate model memory requirements for 7B parameters
+            fp32_size_gb = 28.0  # ~28GB for FP32
+            fp16_size_gb = 14.0  # ~14GB for FP16
+            int8_size_gb = 7.0   # ~7GB for Int8
+            
+            # Default config for GPU
+            if torch.cuda.is_available():
+                config = {
+                    'torch_dtype': torch.float16,
+                    'device_map': 'auto',
+                    'precision': 'fp16',
+                    'reason': 'GPU available'
+                }
+            else:
+                # CPU-only environment - determine best precision based on available memory
+                safety_margin = 0.85  # Use 85% of available memory at most
+                safe_available_gb = available_gb * safety_margin
+                
+                if safe_available_gb >= fp16_size_gb + 2.0:  # +2GB for overhead
+                    # Enough memory for FP16
+                    config = {
+                        'torch_dtype': torch.float16,
+                        'device_map': None,
+                        'precision': 'fp16',
+                        'reason': f'Enough memory for FP16 ({safe_available_gb:.1f}GB available)'
+                    }
+                elif safe_available_gb >= int8_size_gb + 2.0:  # +2GB for overhead
+                    # Use 8-bit quantization
+                    config = {
+                        'torch_dtype': torch.float16,  # Base dtype still float16
+                        'device_map': None,
+                        'load_in_8bit': True,
+                        'precision': 'int8',
+                        'reason': f'Using 8-bit quantization to save memory ({safe_available_gb:.1f}GB available)'
+                    }
+                else:
+                    # Very low memory - add disk offloading and strict memory limits
+                    logger.warning(f"Low memory condition detected ({safe_available_gb:.1f}GB available). Adding disk offloading.")
+                    config = {
+                        'torch_dtype': torch.float16,
+                        'device_map': 'auto',  # Auto will use disk offloading
+                        'load_in_8bit': True,
+                        'max_memory': {0: f"{int(safe_available_gb * 1024)}MB"},  # Limit memory use
+                        'precision': 'int8+offload',
+                        'reason': f'Low memory, using 8-bit + disk offloading ({safe_available_gb:.1f}GB available)'
+                    }
+            
+            return config
+                
+        except Exception as e:
+            logger.warning(f"Error determining optimal model config: {e}. Using default configuration.")
+            # Default safe configuration
+            return {
+                'torch_dtype': torch.float16,
+                'device_map': 'auto' if torch.cuda.is_available() else None,
+                'precision': 'fp16',
+                'reason': 'Default configuration (error in memory detection)'
+            }
     
     async def _initialize_speech_models(self) -> None:
         """Initialize speech-to-text and text-to-speech models"""
@@ -608,31 +708,88 @@ User query: {user_input}"""
             raise  # Re-raise to trigger fallback
     
     async def _get_local_model_response(self, user_input: str) -> str:
-        """Get response from local HuggingFace model"""
+        """Get response from local HuggingFace model with function calling support"""
         try:
             if not self.local_model or not self.tokenizer:
                 raise Exception("Local model not initialized")
-                
+            
+            # Create function calling prompt for instruction-following models
+            functions = self._get_function_definitions()
+            function_descriptions = "\n".join([
+                f"- {func['name']}: {func['description']}" 
+                for func in functions
+            ])
+            
+            # Format prompt for function calling
+            prompt = f"""You are an AI assistant for a medical imaging migration service. You help with DICOM/HL7 operations, database queries, and system management.
+
+Available functions:
+{function_descriptions}
+
+User request: {user_input}
+
+If the user request matches one of the available functions, respond with JSON in this format:
+{{
+    "function_call": {{
+        "name": "function_name",
+        "arguments": {{"arg1": "value1", "arg2": "value2"}}
+    }}
+}}
+
+If the request doesn't match a function, respond normally as a helpful assistant.
+
+Response:"""
+            
             # Encode input
-            inputs = self.tokenizer.encode(user_input + self.tokenizer.eos_token, return_tensors='pt')
+            inputs = self.tokenizer.encode(prompt, return_tensors='pt', truncation=True, max_length=1024)
             
             # Generate response
             with torch.no_grad():
                 outputs = self.local_model.generate(
                     inputs,
-                    max_length=inputs.shape[1] + 100,
+                    max_length=inputs.shape[1] + 200,
                     num_return_sequences=1,
-                    temperature=0.7,
+                    temperature=0.3,  # Lower temperature for more consistent function calling
                     do_sample=True,
-                    pad_token_id=self.tokenizer.eos_token_id
+                    pad_token_id=self.tokenizer.eos_token_id,
+                    eos_token_id=self.tokenizer.eos_token_id
                 )
             
             # Decode response
-            response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            full_response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
             
-            # Extract only the new part (after the input)
-            response = response[len(user_input):].strip()
+            # Extract only the new part (after the prompt)
+            if "Response:" in full_response:
+                response = full_response.split("Response:")[-1].strip()
+            else:
+                response = full_response[len(prompt):].strip()
             
+            # Try to parse as function call JSON
+            try:
+                import json
+                import re
+                
+                # Look for JSON pattern in response
+                json_match = re.search(r'\{[^}]*"function_call"[^}]*\{[^}]*\}[^}]*\}', response, re.DOTALL)
+                if json_match:
+                    json_str = json_match.group(0)
+                    function_data = json.loads(json_str)
+                    
+                    if "function_call" in function_data:
+                        function_call = function_data["function_call"]
+                        function_name = function_call.get("name")
+                        function_args = function_call.get("arguments", {})
+                        
+                        if function_name:
+                            # Execute the function call
+                            result = await self._handle_function_call(function_name, function_args)
+                            return result
+                            
+            except (json.JSONDecodeError, KeyError) as e:
+                # If JSON parsing fails, treat as regular response
+                logger.debug(f"Could not parse function call from local model: {e}")
+            
+            # Return as regular response if no function call detected
             return response if response else "I'm not sure how to respond to that."
             
         except Exception as e:
