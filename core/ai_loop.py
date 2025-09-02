@@ -104,10 +104,10 @@ class AIService:
         for provider in self.settings.ai.ai_providers:
             try:
                 if provider == "huggingface_local":
-                    # Local HuggingFace model (highest priority, free)
+                    # Local HuggingFace model (free, but priority depends on AI_PROVIDERS config)
                     # This will be initialized in _initialize_local_model()
                     self.available_providers.append("huggingface_local")
-                    logger.info("Local Hugging Face model configured (priority #1)")
+                    logger.info("Local Hugging Face model configured")
                     
                 elif provider == "xai" and self.settings.ai.xai_api_key:
                     # XAI uses OpenAI-compatible API
@@ -677,7 +677,7 @@ class AIService:
             )
             
             response = await self.anthropic_client.messages.create(
-                model="claude-3-sonnet-20240229",
+                model="claude-3-5-sonnet-20241022",
                 max_tokens=512,
                 system=system_prompt,
                 messages=[
@@ -915,6 +915,17 @@ Response:"""
             {
                 "name": "select_query",
                 "description": "Execute a SELECT SQL query",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": "SQL query to execute"}
+                    },
+                    "required": ["query"]
+                }
+            },
+            {
+                "name": "select",
+                "description": "Execute a SELECT SQL query (alias for select_query)",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -1195,6 +1206,10 @@ Response:"""
                 )
                 
             elif function_name == "select_query":
+                return await self._execute_select_query(arguments.get("query", ""))
+                
+            elif function_name == "select":
+                # Alias for select_query to handle naming inconsistencies
                 return await self._execute_select_query(arguments.get("query", ""))
                 
             elif function_name == "fizzbuzz":

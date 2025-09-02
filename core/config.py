@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Union
 from functools import lru_cache
 
-from pydantic import Field, validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -140,12 +140,29 @@ class AISettings(BaseSettings):
     huggingface_api_key: Optional[str] = Field(default=None, env="HUGGINGFACE_API_KEY")
     
     # Provider priorities (1=highest priority)
-    # Local HuggingFace first (free), then XAI, Anthropic, OpenAI, finally HF API (paid)
-    ai_providers: List[str] = Field(
+    # Default: Local HuggingFace first (free), but configurable via AI_PROVIDERS env var
+    # Current: Anthropic first (best quality), Local HF second (free), then paid APIs
+    ai_providers: Union[str, List[str]] = Field(
         default=["huggingface_local", "xai", "anthropic", "openai", "huggingface_api"],
         env="AI_PROVIDERS",
-        description="AI provider priority order - local first, paid APIs last"
+        description="AI provider priority order - configurable via environment"
     )
+    
+    @field_validator('ai_providers', mode='before')
+    @classmethod
+    def parse_ai_providers(cls, v):
+        """Parse AI_PROVIDERS from environment variable (comma-separated string)"""
+        if isinstance(v, str):
+            # Parse comma-separated string
+            providers = [provider.strip() for provider in v.split(',') if provider.strip()]
+            if providers:  # Only return parsed list if we got valid providers
+                return providers
+            # Fall back to default if parsing results in empty list
+            return ["huggingface_local", "xai", "anthropic", "openai", "huggingface_api"]
+        elif isinstance(v, list):
+            # Already a list, validate entries
+            return [str(provider).strip() for provider in v if str(provider).strip()]
+        return v
     
     # Model selection
     default_model: str = Field(default="microsoft/DialoGPT-large", env="AI_DEFAULT_MODEL")
@@ -154,7 +171,7 @@ class AISettings(BaseSettings):
     # Provider-specific models
     huggingface_model: str = Field(default="microsoft/DialoGPT-large", env="HUGGINGFACE_MODEL")
     xai_model: str = Field(default="grok-beta", env="XAI_MODEL")
-    anthropic_model: str = Field(default="claude-3-haiku-20240307", env="ANTHROPIC_MODEL")
+    anthropic_model: str = Field(default="claude-3-5-sonnet-20241022", env="ANTHROPIC_MODEL")
     openai_model: str = Field(default="gpt-3.5-turbo", env="OPENAI_MODEL")
     
     # API endpoints
@@ -176,6 +193,12 @@ class AISettings(BaseSettings):
     initial_trust_level: int = Field(default=5, env="AI_INITIAL_TRUST")
     max_trust_level: int = Field(default=20, env="AI_MAX_TRUST")
     moderation_enabled: bool = Field(default=True, env="AI_MODERATION_ENABLED")
+    
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8" 
+        case_sensitive = False
+        extra = "ignore"
 
 
 class WebSettings(BaseSettings):
@@ -295,7 +318,8 @@ class Settings(BaseSettings):
     def ssh_port(self) -> int:
         return self.ssh.ssh_port
     
-    @validator('base_directory', 'config_directory', 'data_directory', pre=True)
+    @field_validator('base_directory', 'config_directory', 'data_directory', mode='before')
+    @classmethod
     def ensure_path(cls, v):
         if isinstance(v, str):
             return Path(v)
