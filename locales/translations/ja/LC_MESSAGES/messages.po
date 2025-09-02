@@ -1,0 +1,583 @@
+# Japanese Translation for Migration Service
+# Copyright (C) 2024 Migration Service Project
+# This file is distributed under the same license as the Migration Service package.
+# Japanese medical imaging terminology
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Migration Service 1.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2024-01-01 12:00+0000\n"
+"PO-Revision-Date: 2025-09-02 18:05+0000\n"
+"Last-Translator: AI Assistant <ai@lethologic.com>\n"
+"Language-Team: Japanese\n"
+"Language: ja\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+# Common messages
+msgid "Welcome to Migration Service"
+msgstr "マイグレーションサービスへようこそ"
+
+msgid "Processing image..."
+msgstr "画像処理中..."
+
+msgid "Analysis complete"
+msgstr "解析完了"
+
+msgid "Error occurred"
+msgstr "エラーが発生しました"
+
+msgid "Service started"
+msgstr "サービスが開始されました"
+
+msgid "Service stopped"
+msgstr "サービスが停止されました"
+
+# Status messages
+msgid "Running"
+msgstr "実行中"
+
+msgid "Stopped"
+msgstr "停止"
+
+msgid "Failed"
+msgstr "失敗"
+
+msgid "Completed"
+msgstr "完了"
+
+msgid "Pending"
+msgstr "保留中"
+
+msgid "Processing"
+msgstr "処理中"
+
+# Medical terms
+msgid "Patient"
+msgstr "患者"
+
+msgid "Study"
+msgstr "検査"
+
+msgid "Series"
+msgstr "シリーズ"
+
+msgid "Image"
+msgstr "画像"
+
+msgid "Diagnosis"
+msgstr "診断"
+
+msgid "Modality"
+msgstr "モダリティ"
+
+msgid "Date"
+msgstr "日付"
+
+msgid "Time"
+msgstr "時間"
+
+# Medical modalities
+msgid "Computed Tomography"
+msgstr "コンピュータ断層撮影"
+
+msgid "Magnetic Resonance"
+msgstr "磁気共鳴映像法"
+
+msgid "X-Ray"
+msgstr "エックス線撮影"
+
+msgid "Ultrasound"
+msgstr "超音波検査"
+
+msgid "Mammography"
+msgstr "マンモグラフィー"
+
+msgid "Nuclear Medicine"
+msgstr "核医学"
+
+msgid "Positron Emission Tomography"
+msgstr "陽電子放出断層撮影"
+
+msgid "Computed Radiography"
+msgstr "コンピュータ放射線撮影"
+
+msgid "Digital Radiography"
+msgstr "デジタル放射線撮影"
+
+# Services
+msgid "DICOM Service"
+msgstr "DICOMサービス"
+
+msgid "HL7 Service"
+msgstr "HL7サービス"
+
+msgid "AI Processing"
+msgstr "AI処理"
+
+msgid "Speech Service"
+msgstr "音声サービス"
+
+msgid "Web Interface"
+msgstr "ウェブインターフェース"
+
+msgid "SSH Server"
+msgstr "SSHサーバー"
+
+# Actions
+msgid "Start"
+msgstr "開始"
+
+msgid "Stop"
+msgstr "停止"
+
+msgid "Restart"
+msgstr "再起動"
+
+msgid "Configure"
+msgstr "設定"
+
+msgid "Search"
+msgstr "検索"
+
+msgid "Upload"
+msgstr "アップロード"
+
+msgid "Download"
+msgstr "ダウンロード"
+
+msgid "Delete"
+msgstr "削除"
+
+msgid "Save"
+msgstr "保存"
+
+msgid "Cancel"
+msgstr "キャンセル"
+
+msgid "Connect"
+msgstr "接続"
+
+msgid "Disconnect"
+msgstr "切断"
+
+msgid "Refresh"
+msgstr "更新"
+
+msgid "Export"
+msgstr "エクスポート"
+
+msgid "Import"
+msgstr "インポート"
+
+# Messages with pluralization (Japanese has no plural forms)
+msgid "{count} image"
+msgid_plural "{count} images"
+msgstr[0] "{count}枚の画像"
+
+msgid "{count} patient"
+msgid_plural "{count} patients"
+msgstr[0] "{count}人の患者"
+
+msgid "{count} study"
+msgid_plural "{count} studies"
+msgstr[0] "{count}件の検査"
+
+msgid "{count} file"
+msgid_plural "{count} files"
+msgstr[0] "{count}個のファイル"
+
+msgid "{count} service"
+msgid_plural "{count} services"
+msgstr[0] "{count}個のサービス"
+
+# Error messages
+msgid "Connection failed"
+msgstr "接続に失敗しました"
+
+msgid "File not found"
+msgstr "ファイルが見つかりません"
+
+msgid "Access denied"
+msgstr "アクセスが拒否されました"
+
+msgid "Invalid format"
+msgstr "無効な形式です"
+
+msgid "Service unavailable"
+msgstr "サービスが利用できません"
+
+msgid "Timeout occurred"
+msgstr "タイムアウトが発生しました"
+
+msgid "Authentication failed"
+msgstr "認証に失敗しました"
+
+msgid "Permission denied"
+msgstr "権限がありません"
+
+msgid "Network error"
+msgstr "ネットワークエラー"
+
+msgid "Database error"
+msgstr "データベースエラー"
+
+# Success messages
+msgid "Operation completed successfully"
+msgstr "操作が正常に完了しました"
+
+msgid "File uploaded successfully"
+msgstr "ファイルのアップロードが完了しました"
+
+msgid "Configuration saved"
+msgstr "設定が保存されました"
+
+msgid "Service started successfully"
+msgstr "サービスが正常に開始されました"
+
+msgid "Connection established"
+msgstr "接続が確立されました"
+
+msgid "Data synchronized successfully"
+msgstr "データの同期が完了しました"
+
+msgid "Backup created successfully"
+msgstr "バックアップが正常に作成されました"
+
+msgid "Migration completed successfully"
+msgstr "マイグレーションが正常に完了しました"
+
+# DICOM-specific terms
+msgid "DICOM"
+msgstr "DICOM"
+
+msgid "PACS"
+msgstr "PACS"
+
+msgid "Worklist"
+msgstr "ワークリスト"
+
+msgid "Query/Retrieve"
+msgstr "クエリ/取得"
+
+msgid "Store"
+msgstr "保存"
+
+msgid "Transfer"
+msgstr "転送"
+
+msgid "Archive"
+msgstr "アーカイブ"
+
+msgid "SCP"
+msgstr "SCP"
+
+msgid "SCU"
+msgstr "SCU"
+
+msgid "AE Title"
+msgstr "AEタイトル"
+
+msgid "Association"
+msgstr "アソシエーション"
+
+msgid "C-FIND"
+msgstr "C-FIND"
+
+msgid "C-STORE"
+msgstr "C-STORE"
+
+msgid "C-MOVE"
+msgstr "C-MOVE"
+
+msgid "C-GET"
+msgstr "C-GET"
+
+# HL7 terms
+msgid "HL7"
+msgstr "HL7"
+
+msgid "FHIR"
+msgstr "FHIR"
+
+msgid "Message"
+msgstr "メッセージ"
+
+msgid "Segment"
+msgstr "セグメント"
+
+msgid "Field"
+msgstr "フィールド"
+
+msgid "Component"
+msgstr "コンポーネント"
+
+msgid "ADT"
+msgstr "ADT"
+
+msgid "ORM"
+msgstr "ORM"
+
+msgid "ORU"
+msgstr "ORU"
+
+# AI and Technical terms
+msgid "Artificial Intelligence"
+msgstr "人工知能"
+
+msgid "Machine Learning"
+msgstr "機械学習"
+
+msgid "Neural Network"
+msgstr "ニューラルネットワーク"
+
+msgid "Deep Learning"
+msgstr "ディープラーニング"
+
+msgid "Algorithm"
+msgstr "アルゴリズム"
+
+msgid "Model"
+msgstr "モデル"
+
+msgid "Training"
+msgstr "訓練"
+
+msgid "Prediction"
+msgstr "予測"
+
+msgid "Classification"
+msgstr "分類"
+
+msgid "Detection"
+msgstr "検出"
+
+msgid "Segmentation"
+msgstr "セグメンテーション"
+
+msgid "Annotation"
+msgstr "アノテーション"
+
+# System terms
+msgid "Server"
+msgstr "サーバー"
+
+msgid "Client"
+msgstr "クライアント"
+
+msgid "Database"
+msgstr "データベース"
+
+msgid "Network"
+msgstr "ネットワーク"
+
+msgid "Security"
+msgstr "セキュリティ"
+
+msgid "Encryption"
+msgstr "暗号化"
+
+msgid "Authentication"
+msgstr "認証"
+
+msgid "Authorization"
+msgstr "認可"
+
+msgid "SSL/TLS"
+msgstr "SSL/TLS"
+
+msgid "Certificate"
+msgstr "証明書"
+
+msgid "Firewall"
+msgstr "ファイアウォール"
+
+msgid "Log"
+msgstr "ログ"
+
+msgid "Audit"
+msgstr "監査"
+
+msgid "Backup"
+msgstr "バックアップ"
+
+msgid "Restore"
+msgstr "復元"
+
+# User Interface
+msgid "Login"
+msgstr "ログイン"
+
+msgid "Logout"
+msgstr "ログアウト"
+
+msgid "Username"
+msgstr "ユーザー名"
+
+msgid "Password"
+msgstr "パスワード"
+
+msgid "Settings"
+msgstr "設定"
+
+msgid "Preferences"
+msgstr "環境設定"
+
+msgid "Profile"
+msgstr "プロファイル"
+
+msgid "Dashboard"
+msgstr "ダッシュボード"
+
+msgid "Menu"
+msgstr "メニュー"
+
+msgid "Navigation"
+msgstr "ナビゲーション"
+
+msgid "Home"
+msgstr "ホーム"
+
+msgid "Help"
+msgstr "ヘルプ"
+
+msgid "About"
+msgstr "について"
+
+msgid "Version"
+msgstr "バージョン"
+
+msgid "License"
+msgstr "ライセンス"
+
+# Time and Date
+msgid "Today"
+msgstr "今日"
+
+msgid "Yesterday"
+msgstr "昨日"
+
+msgid "Tomorrow"
+msgstr "明日"
+
+msgid "This week"
+msgstr "今週"
+
+msgid "Last week"
+msgstr "先週"
+
+msgid "Next week"
+msgstr "来週"
+
+msgid "This month"
+msgstr "今月"
+
+msgid "Last month"
+msgstr "先月"
+
+msgid "Next month"
+msgstr "来月"
+
+msgid "Year"
+msgstr "年"
+
+msgid "Month"
+msgstr "月"
+
+msgid "Day"
+msgstr "日"
+
+msgid "Hour"
+msgstr "時"
+
+msgid "Minute"
+msgstr "分"
+
+msgid "Second"
+msgstr "秒"
+
+# File operations
+msgid "File"
+msgstr "ファイル"
+
+msgid "Folder"
+msgstr "フォルダ"
+
+msgid "Directory"
+msgstr "ディレクトリ"
+
+msgid "Path"
+msgstr "パス"
+
+msgid "Size"
+msgstr "サイズ"
+
+msgid "Type"
+msgstr "タイプ"
+
+msgid "Format"
+msgstr "形式"
+
+msgid "Extension"
+msgstr "拡張子"
+
+msgid "Created"
+msgstr "作成日時"
+
+msgid "Modified"
+msgstr "更新日時"
+
+msgid "Accessed"
+msgstr "アクセス日時"
+
+# Quality and Status
+msgid "Excellent"
+msgstr "優秀"
+
+msgid "Good"
+msgstr "良好"
+
+msgid "Fair"
+msgstr "普通"
+
+msgid "Poor"
+msgstr "不良"
+
+msgid "Unknown"
+msgstr "不明"
+
+msgid "Active"
+msgstr "アクティブ"
+
+msgid "Inactive"
+msgstr "非アクティブ"
+
+msgid "Enabled"
+msgstr "有効"
+
+msgid "Disabled"
+msgstr "無効"
+
+msgid "Online"
+msgstr "オンライン"
+
+msgid "Offline"
+msgstr "オフライン"
+
+msgid "Available"
+msgstr "利用可能"
+
+msgid "Unavailable"
+msgstr "利用不可"
+
+msgid "Ready"
+msgstr "準備完了"
+
+msgid "Busy"
+msgstr "処理中"
+
+msgid "Idle"
+msgstr "待機中"

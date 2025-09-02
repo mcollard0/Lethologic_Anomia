@@ -185,7 +185,7 @@ class AISettings(BaseSettings):
     
     # Languages
     supported_languages: List[str] = Field(
-        default=["en", "la"],  # English and Latin
+        default=["en", "ja", "la"],  # English, Japanese, and Latin
         env="SUPPORTED_LANGUAGES"
     )
     
