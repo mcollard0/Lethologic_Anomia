@@ -88,42 +88,17 @@ async def initialize_services(settings: Settings) -> ProcessManager:
     return process_manager
 
 
-async def start_web_interface(settings: Settings, process_manager: ProcessManager):
-    """Start the FastAPI web interface"""
-    if settings.web_interface_enabled:
-        app = create_app(process_manager)
-        import uvicorn
-        
-        config = uvicorn.Config(
-            app,
-            host="0.0.0.0",
-            port=settings.web_port,
-            ssl_keyfile=settings.ssl_keyfile if settings.ssl_enabled else None,
-            ssl_certfile=settings.ssl_certfile if settings.ssl_enabled else None,
-            log_config=None,  # Use our custom logging
-        )
-        server = uvicorn.Server(config)
-        
-        logger.info(f"Starting web interface on {'https' if settings.ssl_enabled else 'http'}://0.0.0.0:{settings.web_port}")
-        asyncio.create_task(server.serve())
-
-
-async def start_ssh_server(settings: Settings, process_manager: ProcessManager):
-    """Start the SSH server"""
-    if settings.ssh_enabled:
-        ssh_server = SSHServer(settings, process_manager)
-        await ssh_server.start()
-        logger.info(f"SSH server started on port {settings.ssh_port}")
+# These functions are now replaced by auto-start functionality in ProcessManager
+# Services are automatically started via process_manager.auto_start_core_services()
 
 
 async def run_main_loop(settings: Settings, process_manager: ProcessManager):
     """Main application loop - equivalent to aiLoop() in C++"""
     try:
-        # Start web interface
-        await start_web_interface(settings, process_manager)
-        
-        # Start SSH server
-        await start_ssh_server(settings, process_manager)
+        # Auto-start core services first
+        logger.info("Auto-starting core services...")
+        started_services = await process_manager.auto_start_core_services()
+        logger.info(f"Auto-started {len(started_services)} core services: {started_services}")
         
         # Initialize AI service for other components to use
         ai_service = None
@@ -139,8 +114,9 @@ async def run_main_loop(settings: Settings, process_manager: ProcessManager):
             logger.warning("AI loop not available, running in basic mode")
         
         # In daemon mode, just wait for shutdown signal
-        # Console interface is available via SSH
-        logger.info("Service running in daemon mode. Use SSH or web interface for interaction.")
+        # Services are now managed by the process manager
+        logger.info("Service running in daemon mode. Core services auto-started.")
+        logger.info("Access via SSH, web interface, or DICOM connections.")
         
         # Wait for shutdown signal
         await _shutdown_event.wait()

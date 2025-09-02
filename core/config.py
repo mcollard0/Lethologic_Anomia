@@ -86,6 +86,10 @@ class DICOMSettings(BaseSettings):
     scp_ssl_port: int = Field(default=50112, env="DICOM_SCP_SSL_PORT")
     our_ae_title: str = Field(default="MIGRATION_SCP", env="DICOM_OUR_AE_TITLE")
     
+    # Auto-start settings
+    auto_start_scp: bool = Field(default=True, env="DICOM_AUTO_START_SCP")
+    auto_start_ssl: bool = Field(default=True, env="DICOM_AUTO_START_SSL")
+    
     # Connection settings
     max_pdu: int = Field(default=65536, env="DICOM_MAX_PDU")
     acse_timeout: int = Field(default=30, env="DICOM_ACSE_TIMEOUT")

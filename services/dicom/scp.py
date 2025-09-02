@@ -124,8 +124,8 @@ class DICOMSCPService:
             self.ae.dimse_timeout = self.config['dimse_timeout']
             self.ae.network_timeout = self.config['socket_timeout']
             
-            # Set up event handlers (will be passed to start_server)
-            self.event_handlers = self._setup_event_handlers()
+            # Set up event handlers
+            self._setup_event_handlers()
             
             self.is_configured = True
             logger.info(f"DICOM SCP configured: AE={self.config['ae_title']}, Port={self.config['port']}")
@@ -186,16 +186,14 @@ class DICOMSCPService:
     def _setup_event_handlers(self):
         """Setup event handlers for the DICOM AE"""
         
-        # Handle C-STORE requests
-        handlers = [
+        # Create handlers list for use in start_server
+        self.handlers = [
             (evt.EVT_C_STORE, self._handle_store),
             (evt.EVT_CONN_OPEN, self._handle_conn_open),
             (evt.EVT_CONN_CLOSE, self._handle_conn_close),
             (evt.EVT_ACCEPTED, self._handle_accepted),
             (evt.EVT_RELEASED, self._handle_released)
         ]
-        
-        return handlers
     
     def _handle_conn_open(self, event):
         """Handle connection opened event"""
@@ -384,7 +382,7 @@ class DICOMSCPService:
             self.ae.start_server(
                 ('', self.config['port']),
                 block=True,
-                evt_handlers=self.event_handlers
+                evt_handlers=self.handlers
             )
             
         except Exception as e:
