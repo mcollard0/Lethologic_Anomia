@@ -2,7 +2,7 @@
 Extended Database Manager with HL7 and FHIR Support
 
 Extends the core database manager with specific table models for HL7 and FHIR message storage.
-This includes all the tables referenced in the HL7 listener, processor, and FHIR interface services.
+This includes all the tables referenced in the HL7 listener, processor, and FHIR interface service.
 """
 
 import json

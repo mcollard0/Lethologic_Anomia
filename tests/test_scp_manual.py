@@ -13,7 +13,7 @@ from pathlib import Path
 # Add current directory to Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from services.dicom.scp import DICOMSCPService, create_dicom_tables
+from service.dicom.scp import DICOMSCPService, create_dicom_tables
 from core.database import DatabaseManager
 from core.config import Settings, get_settings
 

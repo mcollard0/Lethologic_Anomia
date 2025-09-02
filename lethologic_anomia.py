@@ -43,9 +43,9 @@ except ImportError as e:
     AI_LOOP_AVAILABLE = False
     ai_loop = None
 from core.redis_manager import RedisManager
-from services.web_interface import create_app
-from services.ssh_server import SSHServer
-from utils.platform_utils import detect_os, setup_signal_handlers
+from service.web_interface import create_app
+from service.ssh_server import SSHServer
+from util.platform_utils import detect_os, setup_signal_handlers
 
 # Initialize console and logger
 console = Console()
@@ -367,12 +367,12 @@ Use the 'config' subcommand to manage database configurations:
     
     # Handle service installation/uninstallation
     if install:
-        from utils.service_installer import install_service
+        from util.service_installer import install_service
         install_service()
         return
         
     if uninstall:
-        from utils.service_installer import uninstall_service
+        from util.service_installer import uninstall_service
         uninstall_service()
         return
     

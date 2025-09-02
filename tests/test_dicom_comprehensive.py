@@ -40,8 +40,8 @@ from rich.text import Text
 import sys
 sys.path.append('/mnt/4f79e4ad-b75d-46a5-af16-ca1bd092ce07/Archive/Lethologic Anomia')
 
-from services.dicom.discovery import DICOMDiscoveryService
-from services.dicom.ssl_manager import DICOMSSLManager
+from service.dicom.discovery import DICOMDiscoveryService
+from service.dicom.ssl_manager import DICOMSSLManager
 from core.database import DatabaseManager
 from core.config import Settings
 from core.custom_logging import get_logger

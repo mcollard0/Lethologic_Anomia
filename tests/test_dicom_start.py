@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from core.config import get_settings
 from core.database import DatabaseManager
-from services.dicom.scp import DICOMSCPService, create_dicom_tables
+from service.dicom.scp import DICOMSCPService, create_dicom_tables
 
 async def test_dicom_scp():
     """Test DICOM SCP service startup"""

@@ -34,8 +34,8 @@ except Exception as e:
 
 try:
     print("4. Testing DICOM services...")
-    from services.dicom.scp import DICOMSCPService
-    from services.dicom.scu import DICOMSCUService
+    from service.dicom.scp import DICOMSCPService
+    from service.dicom.scu import DICOMSCUService
     print("   ✓ DICOM services loaded")
 except Exception as e:
     print(f"   ✗ Error: {e}")

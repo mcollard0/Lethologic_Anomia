@@ -60,7 +60,7 @@ class DICOMSCPService:
         self.config = {
             'port': 104,
             'ae_title': 'MIGRATIONSERVICE',
-            'output_directory': './dicom_storage',
+            'output_directory': './Archive',
             'max_pdu': 65536,
             'acse_timeout': 30,
             'dimse_timeout': 30,
@@ -116,6 +116,11 @@ class DICOMSCPService:
             # Add supported storage SOP classes
             storage_sops = self._get_supported_storage_sops()
             for sop_class in storage_sops:
+                self.ae.add_supported_context(sop_class)
+            
+            # Add Query/Retrieve SOP classes for C-MOVE support
+            qr_sops = self._get_supported_qr_sops()
+            for sop_class in qr_sops:
                 self.ae.add_supported_context(sop_class)
             
             # Configure network options
@@ -183,12 +188,36 @@ class DICOMSCPService:
         logger.info(f"Configured {len(sop_classes)} DICOM SOP classes")
         return sop_classes
     
+    def _get_supported_qr_sops(self) -> List:
+        """Get list of supported Query/Retrieve SOP classes"""
+        qr_classes = []
+        
+        # Query/Retrieve SOP classes for C-MOVE support
+        qr_sop_classes = [
+            ('StudyRootQueryRetrieveInformationModelMove', 'StudyRootQueryRetrieveInformationModelMove'),
+            ('PatientRootQueryRetrieveInformationModelMove', 'PatientRootQueryRetrieveInformationModelMove'),
+            ('PatientStudyOnlyQueryRetrieveInformationModelMove', 'PatientStudyOnlyQueryRetrieveInformationModelMove')
+        ]
+        
+        for name, class_name in qr_sop_classes:
+            try:
+                sop_class = globals().get(class_name)
+                if sop_class:
+                    qr_classes.append(sop_class)
+                    logger.debug(f"Added Q/R SOP class: {name}")
+            except (NameError, AttributeError):
+                logger.debug(f"Q/R SOP class not available: {name}")
+        
+        logger.info(f"Configured {len(qr_classes)} Query/Retrieve SOP classes")
+        return qr_classes
+    
     def _setup_event_handlers(self):
         """Setup event handlers for the DICOM AE"""
         
         # Create handlers list for use in start_server
         self.handlers = [
             (evt.EVT_C_STORE, self._handle_store),
+            (evt.EVT_C_MOVE, self._handle_move),
             (evt.EVT_CONN_OPEN, self._handle_conn_open),
             (evt.EVT_CONN_CLOSE, self._handle_conn_close),
             (evt.EVT_ACCEPTED, self._handle_accepted),
@@ -211,6 +240,302 @@ class DICOMSCPService:
     def _handle_released(self, event):
         """Handle association released event"""
         logger.debug(f"Association released")
+    
+    def _handle_move(self, event):
+        """
+        Handle C-MOVE request - move images to another DICOM node
+        
+        Args:
+            event: PyNetDICOM move event
+            
+        Returns:
+            Generator yielding (status, dataset) tuples for move progress
+        """
+        try:
+            # Get the move destination AE title from the request
+            move_destination = event.move_destination
+            if not move_destination:
+                logger.error("C-MOVE request missing destination AE title")
+                yield (0xC000, None)  # Cannot understand
+                return
+            
+            # Get the query dataset
+            ds = event.identifier
+            
+            # Extract query parameters
+            query_level = getattr(ds, 'QueryRetrieveLevel', 'STUDY')
+            
+            logger.info(f"C-MOVE request: Level={query_level}, Destination={move_destination}")
+            
+            # Get destination device info from database
+            destination_info = self._get_destination_device_info(move_destination)
+            if not destination_info:
+                logger.error(f"Destination AE title not found in database: {move_destination}")
+                yield (0xA801, None)  # Move destination unknown
+                return
+            
+            # Find images to move based on query level
+            images_to_move = self._find_images_for_move(ds, query_level)
+            if not images_to_move:
+                logger.warning("No images found matching C-MOVE criteria")
+                yield (0xA702, None)  # Out of resources - no images found
+                return
+            
+            logger.info(f"Found {len(images_to_move)} images to move to {move_destination}")
+            
+            # Perform the actual C-MOVE operation
+            yield from self._perform_move_operation(
+                images_to_move, 
+                destination_info, 
+                move_destination
+            )
+            
+        except Exception as e:
+            logger.error(f"Error handling C-MOVE: {e}")
+            self.errors_occurred += 1
+            yield (0xC000, None)  # Cannot understand
+    
+    def _get_destination_device_info(self, ae_title: str) -> Optional[Dict[str, Any]]:
+        """
+        Get destination device information from database
+        
+        Args:
+            ae_title: AE title of destination device
+            
+        Returns:
+            Dict with device info (ip_address, port, ae_title) or None if not found
+        """
+        try:
+            # Query the device table for the AE title
+            # Run in thread to avoid blocking the event handler
+            import threading
+            
+            result = {'device_info': None, 'error': None}
+            
+            def query_db():
+                try:
+                    # This runs a sync database query in a thread
+                    import sqlite3
+                    db_path = self.settings.database_url.replace('sqlite:///', '')
+                    
+                    with sqlite3.connect(db_path) as conn:
+                        conn.row_factory = sqlite3.Row
+                        cursor = conn.cursor()
+                        
+                        cursor.execute(
+                            "SELECT ip_address, port, ae_title, device_name FROM device WHERE ae_title = ? AND enabled = 1",
+                            (ae_title,)
+                        )
+                        
+                        row = cursor.fetchone()
+                        if row:
+                            result['device_info'] = {
+                                'ip_address': row['ip_address'],
+                                'port': row['port'],
+                                'ae_title': row['ae_title'],
+                                'device_name': row['device_name']
+                            }
+                except Exception as e:
+                    result['error'] = str(e)
+            
+            # Run query in thread
+            thread = threading.Thread(target=query_db)
+            thread.start()
+            thread.join(timeout=5)  # Wait up to 5 seconds
+            
+            if result['error']:
+                logger.error(f"Database query error: {result['error']}")
+                return None
+            
+            return result['device_info']
+            
+        except Exception as e:
+            logger.error(f"Error getting destination device info: {e}")
+            return None
+    
+    def _find_images_for_move(self, query_ds: Dataset, query_level: str) -> List[str]:
+        """
+        Find images that match the C-MOVE query criteria
+        
+        Args:
+            query_ds: Query dataset with search criteria
+            query_level: Query level (STUDY, SERIES, IMAGE)
+            
+        Returns:
+            List of file paths for images to move
+        """
+        try:
+            import threading
+            import sqlite3
+            
+            result = {'file_paths': [], 'error': None}
+            
+            def query_images():
+                try:
+                    db_path = self.settings.database_url.replace('sqlite:///', '')
+                    
+                    with sqlite3.connect(db_path) as conn:
+                        conn.row_factory = sqlite3.Row
+                        cursor = conn.cursor()
+                        
+                        # Build query based on level and criteria
+                        if query_level == 'STUDY':
+                            study_uid = getattr(query_ds, 'StudyInstanceUID', '')
+                            if study_uid:
+                                cursor.execute(
+                                    "SELECT file_path FROM dicom_files WHERE study_instance_uid = ?",
+                                    (study_uid,)
+                                )
+                            else:
+                                # Search by patient ID if no study UID
+                                patient_id = getattr(query_ds, 'PatientID', '')
+                                if patient_id:
+                                    cursor.execute(
+                                        "SELECT file_path FROM dicom_files WHERE patient_id = ?",
+                                        (patient_id,)
+                                    )
+                                else:
+                                    logger.warning("C-MOVE query has no useful criteria")
+                                    return
+                        
+                        elif query_level == 'SERIES':
+                            series_uid = getattr(query_ds, 'SeriesInstanceUID', '')
+                            if series_uid:
+                                cursor.execute(
+                                    "SELECT file_path FROM dicom_files WHERE series_instance_uid = ?",
+                                    (series_uid,)
+                                )
+                        
+                        elif query_level == 'IMAGE':
+                            sop_uid = getattr(query_ds, 'SOPInstanceUID', '')
+                            if sop_uid:
+                                cursor.execute(
+                                    "SELECT file_path FROM dicom_files WHERE sop_instance_uid = ?",
+                                    (sop_uid,)
+                                )
+                        
+                        rows = cursor.fetchall()
+                        result['file_paths'] = [row['file_path'] for row in rows if row['file_path']]
+                        
+                except Exception as e:
+                    result['error'] = str(e)
+            
+            # Run query in thread
+            thread = threading.Thread(target=query_images)
+            thread.start()
+            thread.join(timeout=10)  # Wait up to 10 seconds
+            
+            if result['error']:
+                logger.error(f"Error finding images for move: {result['error']}")
+                return []
+            
+            return result['file_paths']
+            
+        except Exception as e:
+            logger.error(f"Error finding images for move: {e}")
+            return []
+    
+    def _perform_move_operation(self, image_paths: List[str], destination_info: Dict[str, Any], 
+                               destination_ae: str) -> Any:
+        """
+        Perform the actual C-MOVE operation by sending images to destination
+        
+        Args:
+            image_paths: List of file paths to move
+            destination_info: Destination device information
+            destination_ae: Destination AE title
+            
+        Yields:
+            Status and dataset tuples for move progress
+        """
+        try:
+            total_images = len(image_paths)
+            moved_count = 0
+            failed_count = 0
+            
+            logger.info(f"Starting C-MOVE operation: {total_images} images to {destination_ae}")
+            
+            # Create SCU AE for sending images to destination
+            scu_ae = AE(ae_title=self.config['ae_title'])
+            
+            # Add all storage contexts we support
+            storage_sops = self._get_supported_storage_sops()
+            for sop_class in storage_sops:
+                scu_ae.add_requested_context(sop_class)
+            
+            # Process each image
+            for i, image_path in enumerate(image_paths):
+                try:
+                    # Read the DICOM file
+                    if not os.path.exists(image_path):
+                        logger.warning(f"File not found: {image_path}")
+                        failed_count += 1
+                        continue
+                    
+                    ds = dcmread(image_path)
+                    
+                    # Establish association with destination
+                    assoc = scu_ae.associate(
+                        destination_info['ip_address'],
+                        destination_info['port'],
+                        ae_title=destination_info['ae_title']
+                    )
+                    
+                    if assoc.is_established:
+                        # Send C-STORE to destination
+                        status = assoc.send_c_store(ds)
+                        assoc.release()
+                        
+                        if status and status.Status == 0x0000:
+                            moved_count += 1
+                            logger.debug(f"Successfully moved image {i+1}/{total_images}: {os.path.basename(image_path)}")
+                        else:
+                            failed_count += 1
+                            logger.warning(f"Failed to store image at destination: status={status.Status if status else 'None'}")
+                    else:
+                        failed_count += 1
+                        logger.error(f"Failed to establish association with destination {destination_info['ip_address']}:{destination_info['port']}")
+                    
+                    # Yield progress status
+                    if (i + 1) % 10 == 0 or i == total_images - 1:
+                        # Create status dataset with progress information
+                        status_ds = Dataset()
+                        status_ds.NumberOfRemainingSuboperations = total_images - (i + 1)
+                        status_ds.NumberOfCompletedSuboperations = moved_count
+                        status_ds.NumberOfFailedSuboperations = failed_count
+                        status_ds.NumberOfWarningSuboperations = 0
+                        
+                        # Yield pending status with progress
+                        yield (0xFF00, status_ds)  # Pending with progress
+                        
+                except Exception as e:
+                    failed_count += 1
+                    logger.error(f"Error processing image {image_path}: {e}")
+                    continue
+            
+            # Final status
+            final_status_ds = Dataset()
+            final_status_ds.NumberOfRemainingSuboperations = 0
+            final_status_ds.NumberOfCompletedSuboperations = moved_count
+            final_status_ds.NumberOfFailedSuboperations = failed_count
+            final_status_ds.NumberOfWarningSuboperations = 0
+            
+            if failed_count == 0:
+                # All successful
+                yield (0x0000, final_status_ds)  # Success
+                logger.info(f"C-MOVE completed successfully: {moved_count}/{total_images} images moved to {destination_ae}")
+            elif moved_count > 0:
+                # Partial success
+                yield (0xB000, final_status_ds)  # Warning - some failures
+                logger.warning(f"C-MOVE partially successful: {moved_count}/{total_images} images moved, {failed_count} failed")
+            else:
+                # Complete failure
+                yield (0xC000, final_status_ds)  # Failure
+                logger.error(f"C-MOVE failed: {failed_count}/{total_images} images failed to move")
+            
+        except Exception as e:
+            logger.error(f"Error in C-MOVE operation: {e}")
+            yield (0xC000, None)  # Cannot understand
     
     def _handle_store(self, event):
         """

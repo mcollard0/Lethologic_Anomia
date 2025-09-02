@@ -551,7 +551,7 @@ class ProcessManager:
             config: Service configuration
         """
         try:
-            from services.dicom.scp import DICOMSCPService, create_dicom_tables
+            from service.dicom.scp import DICOMSCPService, create_dicom_tables
             
             logger.info(f"Starting DICOM SCP service {process_id}")
             
@@ -618,7 +618,7 @@ class ProcessManager:
             config: Service configuration
         """
         try:
-            from services.web_interface import create_app
+            from service.web_interface import create_app
             import uvicorn
             
             logger.info(f"Starting web interface service {process_id}")
@@ -665,7 +665,7 @@ class ProcessManager:
             config: Service configuration
         """
         try:
-            from services.ssh_server import SSHServer
+            from service.ssh_server import SSHServer
             
             logger.info(f"Starting SSH server service {process_id}")
             
