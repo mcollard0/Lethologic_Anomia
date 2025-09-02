@@ -60,11 +60,16 @@ class ConfigEntry(Base):
     __tablename__ = 'config'
     
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(255), unique=True)
-    value: Mapped[str] = mapped_column(Text)
+    service: Mapped[str] = mapped_column(String(64))  # Service name (e.g., dicom_scp, web_interface)
+    name: Mapped[str] = mapped_column(String(255))  # Setting name (e.g., port, host)
+    value: Mapped[str] = mapped_column(Text)  # Setting value
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    value_type: Mapped[str] = mapped_column(String(20), default='string')  # string, integer, boolean, json
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
+    
+    # Composite unique constraint on service and name
+    __table_args__ = (sa.UniqueConstraint('service', 'name'),)
 
 
 class Site(Base):
@@ -254,6 +259,12 @@ class DatabaseManager:
         """Detect database type from URL"""
         parsed = urlparse(url)
         scheme = parsed.scheme.lower()
+        
+        # Handle simple filenames (no scheme)
+        if not scheme:
+            # Assume SQLite for simple filenames
+            self.database_url = f"sqlite:///{url}"
+            return 'sqlite'
         
         if scheme.startswith('sqlite'):
             return 'sqlite'

@@ -20,6 +20,7 @@ from .config import Settings
 from .database import DatabaseManager
 from .redis_manager import RedisManager, RedisLock
 from .custom_logging import get_logger, LogPollingService
+from .config_manager import DatabaseConfigManager
 
 logger = get_logger(__name__)
 
@@ -131,6 +132,7 @@ class ProcessManager:
         self.db_manager = db_manager
         self.redis_manager = redis_manager
         self.settings = settings
+        self.config_manager = DatabaseConfigManager(db_manager)
         
         # Process tracking
         self.processes: Dict[str, ProcessInfo] = {}
@@ -151,6 +153,9 @@ class ProcessManager:
     async def initialize(self) -> None:
         """Initialize the process manager"""
         try:
+            # Initialize config manager first
+            await self.config_manager.initialize()
+            
             # Register this manager process in Redis (if available)
             await self.redis_manager.register_process(
                 "process_manager",
@@ -556,23 +561,27 @@ class ProcessManager:
             # Create and configure SCP service
             scp_service = DICOMSCPService(self.db_manager, self.settings)
             
-            # Use configuration from settings or override with provided config
+            # Get database configuration with fallback to settings/config
+            db_config = await self.config_manager.get_dicom_scp_config(self.settings)
+            
+            # Merge: provided config > database config > settings defaults
             scp_config = {
-                'port': config.get('port', self.settings.dicom.scp_port),
-                'ae_title': config.get('ae_title', self.settings.dicom.our_ae_title),
-                'output_directory': config.get('output_directory', self.settings.dicom.storage_directory),
-                'max_pdu': self.settings.dicom.max_pdu,
-                'acse_timeout': self.settings.dicom.acse_timeout,
-                'dimse_timeout': self.settings.dicom.dimse_timeout,
-                'socket_timeout': self.settings.dicom.socket_timeout
+                'port': config.get('port') or db_config.get('port', self.settings.dicom.scp_port),
+                'ae_title': config.get('ae_title') or db_config.get('ae_title', self.settings.dicom.our_ae_title),
+                'output_directory': config.get('output_directory') or db_config.get('storage_directory', self.settings.dicom.storage_directory),
+                'max_pdu': config.get('max_pdu') or db_config.get('max_pdu', self.settings.dicom.max_pdu),
+                'acse_timeout': config.get('acse_timeout') or db_config.get('acse_timeout', self.settings.dicom.acse_timeout),
+                'dimse_timeout': config.get('dimse_timeout') or db_config.get('dimse_timeout', self.settings.dicom.dimse_timeout),
+                'socket_timeout': config.get('socket_timeout') or db_config.get('socket_timeout', self.settings.dicom.socket_timeout)
             }
             
             # Configure SSL if enabled
-            if self.settings.dicom.ssl_enabled and config.get('ssl', False):
-                scp_config['port'] = self.settings.dicom.scp_ssl_port
+            ssl_enabled = config.get('ssl') or db_config.get('ssl_enabled', self.settings.dicom.ssl_enabled)
+            if ssl_enabled:
+                scp_config['port'] = config.get('port') or db_config.get('ssl_port', self.settings.dicom.scp_ssl_port)
                 scp_config['ssl_enabled'] = True
-                scp_config['ssl_cert_file'] = self.settings.dicom.ssl_cert_file
-                scp_config['ssl_key_file'] = self.settings.dicom.ssl_key_file
+                scp_config['ssl_cert_file'] = db_config.get('ssl_cert_file', self.settings.dicom.ssl_cert_file)
+                scp_config['ssl_key_file'] = db_config.get('ssl_key_file', self.settings.dicom.ssl_key_file)
             
             if not scp_service.configure(scp_config):
                 raise RuntimeError("Failed to configure DICOM SCP service")
@@ -614,23 +623,31 @@ class ProcessManager:
             
             logger.info(f"Starting web interface service {process_id}")
             
+            # Get database configuration with fallback to settings
+            db_config = await self.config_manager.get_web_interface_config(self.settings)
+            
             # Create FastAPI app
             app = create_app(self)
+            
+            # Merge configuration: provided > database > settings
+            host = config.get('host') or db_config.get('host', '0.0.0.0')
+            port = config.get('port') or db_config.get('port', self.settings.web.web_port)
+            ssl_enabled = db_config.get('ssl_enabled', self.settings.web.ssl_enabled)
             
             # Configure uvicorn
             uvicorn_config = uvicorn.Config(
                 app,
-                host=config.get('host', '0.0.0.0'),
-                port=config.get('port', self.settings.web.web_port),
-                ssl_keyfile=self.settings.web.ssl_keyfile if self.settings.web.ssl_enabled else None,
-                ssl_certfile=self.settings.web.ssl_certfile if self.settings.web.ssl_enabled else None,
+                host=host,
+                port=port,
+                ssl_keyfile=db_config.get('ssl_key_file', self.settings.web.ssl_keyfile) if ssl_enabled else None,
+                ssl_certfile=db_config.get('ssl_cert_file', self.settings.web.ssl_certfile) if ssl_enabled else None,
                 log_config=None,  # Use our custom logging
                 access_log=False  # Disable uvicorn access log
             )
             
             server = uvicorn.Server(uvicorn_config)
             
-            logger.info(f"Web interface service {process_id} starting on {'https' if self.settings.web.ssl_enabled else 'http'}://0.0.0.0:{uvicorn_config.port}")
+            logger.info(f"Web interface service {process_id} starting on {'https' if ssl_enabled else 'http'}://{host}:{port}")
             
             # Run server
             await server.serve()
@@ -652,13 +669,18 @@ class ProcessManager:
             
             logger.info(f"Starting SSH server service {process_id}")
             
-            # Create SSH server
+            # Get database configuration with fallback to settings
+            db_config = await self.config_manager.get_ssh_server_config(self.settings)
+            
+            # Create SSH server with merged configuration
             ssh_server = SSHServer(self.settings, self)
             
             # Start SSH server
             await ssh_server.start()
             
-            logger.info(f"SSH server service {process_id} started on port {self.settings.ssh.ssh_port}")
+            # Get final port configuration
+            ssh_port = config.get('port') or db_config.get('port', self.settings.ssh.ssh_port)
+            logger.info(f"SSH server service {process_id} started on port {ssh_port}")
             
             # Keep service running until cancelled
             try:
@@ -687,17 +709,25 @@ class ProcessManager:
         try:
             logger.info(f"Starting HL7 listener service {process_id}")
             
+            # Get database configuration with fallback to settings
+            db_config = await self.config_manager.get_hl7_listener_config(self.settings)
+            
+            # Merge configuration: provided > database > settings
+            host = config.get('host') or db_config.get('host', '0.0.0.0')
+            port = config.get('port') or db_config.get('port', self.settings.hl7.hl7_port)
+            max_connections = db_config.get('max_connections', 50)
+            
             # Create a basic HL7 listener (placeholder for now)
             import socket
             
             # Create socket for HL7 listener
             hl7_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             hl7_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            hl7_socket.bind(('0.0.0.0', self.settings.hl7.hl7_port))
-            hl7_socket.listen(5)
+            hl7_socket.bind((host, port))
+            hl7_socket.listen(max_connections)
             hl7_socket.setblocking(False)
             
-            logger.info(f"HL7 listener service {process_id} listening on port {self.settings.hl7.hl7_port}")
+            logger.info(f"HL7 listener service {process_id} listening on {host}:{port} (max connections: {max_connections})")
             
             # Keep service running until cancelled
             try:
@@ -737,7 +767,7 @@ class ProcessManager:
     
     async def auto_start_core_services(self) -> List[str]:
         """
-        Auto-start core services based on configuration
+        Auto-start core services based on database configuration
         
         Returns:
             List of started process IDs
@@ -745,65 +775,77 @@ class ProcessManager:
         started_processes = []
         
         try:
+            # Get configurations from database
+            dicom_config = await self.config_manager.get_dicom_scp_config(self.settings)
+            web_config = await self.config_manager.get_web_interface_config(self.settings)
+            ssh_config = await self.config_manager.get_ssh_server_config(self.settings)
+            hl7_config = await self.config_manager.get_hl7_listener_config(self.settings)
+            
             # Start DICOM SCP service (standard port)
-            if self.settings.dicom.auto_start_scp and self.settings.dicom.scp_port > 0:
+            if dicom_config.get('auto_start', self.settings.dicom.auto_start_scp):
                 try:
-                    process_id = await self.start_process(
-                        ProcessType.DICOM_SCP,
-                        {'port': self.settings.dicom.scp_port, 'ssl': False}
-                    )
-                    started_processes.append(process_id)
-                    logger.info(f"Auto-started DICOM SCP service: {process_id}")
+                    port = dicom_config.get('port', self.settings.dicom.scp_port)
+                    if port > 0:
+                        process_id = await self.start_process(
+                            ProcessType.DICOM_SCP,
+                            {'port': port, 'ssl': False}
+                        )
+                        started_processes.append(process_id)
+                        logger.info(f"Auto-started DICOM SCP service: {process_id} on port {port}")
                 except Exception as e:
                     logger.error(f"Failed to auto-start DICOM SCP: {e}")
             
             # Start DICOM SSL SCP service
-            if (self.settings.dicom.auto_start_ssl and 
-                self.settings.dicom.ssl_enabled and 
-                self.settings.dicom.scp_ssl_port > 0):
+            ssl_enabled = dicom_config.get('ssl_enabled', self.settings.dicom.ssl_enabled)
+            if ssl_enabled:
                 try:
-                    process_id = await self.start_process(
-                        ProcessType.DICOM_SCP,
-                        {'port': self.settings.dicom.scp_ssl_port, 'ssl': True}
-                    )
-                    started_processes.append(process_id)
-                    logger.info(f"Auto-started DICOM SSL SCP service: {process_id}")
+                    ssl_port = dicom_config.get('ssl_port', self.settings.dicom.scp_ssl_port)
+                    if ssl_port > 0:
+                        process_id = await self.start_process(
+                            ProcessType.DICOM_SCP,
+                            {'port': ssl_port, 'ssl': True}
+                        )
+                        started_processes.append(process_id)
+                        logger.info(f"Auto-started DICOM SSL SCP service: {process_id} on port {ssl_port}")
                 except Exception as e:
                     logger.error(f"Failed to auto-start DICOM SSL SCP: {e}")
             
             # Start Web Interface service (includes FHIR endpoints)
-            if self.settings.web.web_interface_enabled:
+            if web_config.get('enabled', self.settings.web.web_interface_enabled):
                 try:
+                    port = web_config.get('port', self.settings.web.web_port)
                     process_id = await self.start_process(
                         ProcessType.WEB_INTERFACE,
-                        {'port': self.settings.web.web_port}
+                        {'port': port}
                     )
                     started_processes.append(process_id)
-                    logger.info(f"Auto-started web interface service (GUI + FHIR): {process_id}")
+                    logger.info(f"Auto-started web interface service (GUI + FHIR): {process_id} on port {port}")
                 except Exception as e:
                     logger.error(f"Failed to auto-start web interface: {e}")
             
             # Start SSH server service
-            if self.settings.ssh.ssh_enabled:
+            if ssh_config.get('enabled', self.settings.ssh.ssh_enabled):
                 try:
+                    port = ssh_config.get('port', self.settings.ssh.ssh_port)
                     process_id = await self.start_process(
                         ProcessType.SSH_SERVER,
-                        {'port': self.settings.ssh.ssh_port}
+                        {'port': port}
                     )
                     started_processes.append(process_id)
-                    logger.info(f"Auto-started SSH server service: {process_id}")
+                    logger.info(f"Auto-started SSH server service: {process_id} on port {port}")
                 except Exception as e:
                     logger.error(f"Failed to auto-start SSH server: {e}")
             
             # Start HL7/FHIR listener service
-            if self.settings.hl7.hl7_enabled:
+            if hl7_config.get('enabled', self.settings.hl7.hl7_enabled):
                 try:
+                    port = hl7_config.get('port', self.settings.hl7.hl7_port)
                     process_id = await self.start_process(
                         ProcessType.HL7_LISTENER,
-                        {'port': self.settings.hl7.hl7_port}
+                        {'port': port}
                     )
                     started_processes.append(process_id)
-                    logger.info(f"Auto-started HL7/FHIR listener service: {process_id}")
+                    logger.info(f"Auto-started HL7/FHIR listener service: {process_id} on port {port}")
                 except Exception as e:
                     logger.error(f"Failed to auto-start HL7 listener: {e}")
             
@@ -1291,6 +1333,42 @@ class ProcessManager:
         except Exception as e:
             logger.error(f"Failed to cleanup stopped services: {e}")
             return 0
+    
+    # Configuration management methods
+    async def get_service_config(self, service_name: str) -> Dict[str, Any]:
+        """
+        Get configuration for a service
+        
+        Args:
+            service_name: Name of the service
+            
+        Returns:
+            Service configuration dictionary
+        """
+        return await self.config_manager.get_service_config(service_name, self.settings)
+    
+    async def set_service_config(self, service_name: str, config_name: str, value: Any) -> bool:
+        """
+        Set a service configuration value
+        
+        Args:
+            service_name: Name of the service
+            config_name: Configuration parameter name
+            value: Value to set
+            
+        Returns:
+            True if successful
+        """
+        return await self.config_manager.set_config_value(service_name, config_name, value)
+    
+    async def list_all_configs(self) -> Dict[str, Dict[str, Any]]:
+        """
+        List all service configurations
+        
+        Returns:
+            All service configurations
+        """
+        return await self.config_manager.get_all_service_configs()
     
     # Convenience methods for single instance operations
     async def start_service_instance(
