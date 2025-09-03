@@ -8,11 +8,17 @@ DICOM images and store them in the database and filesystem.
 import asyncio
 import os
 import json
+import sys
 import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Callable
 import uuid
+
+# Ensure project root is in Python path
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
 from pynetdicom import AE, evt, debug_logger
 from pynetdicom.sop_class import *
@@ -378,12 +384,12 @@ class DICOMSCPService:
                         conn.row_factory = sqlite3.Row
                         cursor = conn.cursor()
                         
-                        # Build query based on level and criteria
+                        # Build query based on level and criteria using JSON queries
                         if query_level == 'STUDY':
                             study_uid = getattr(query_ds, 'StudyInstanceUID', '')
                             if study_uid:
                                 cursor.execute(
-                                    "SELECT file_path FROM dicom_files WHERE study_instance_uid = ?",
+                                    "SELECT file_path FROM dicom_file WHERE json_extract(dicom_tags, '$.StudyInstanceUID') = ?",
                                     (study_uid,)
                                 )
                             else:
@@ -391,7 +397,7 @@ class DICOMSCPService:
                                 patient_id = getattr(query_ds, 'PatientID', '')
                                 if patient_id:
                                     cursor.execute(
-                                        "SELECT file_path FROM dicom_files WHERE patient_id = ?",
+                                        "SELECT file_path FROM dicom_file WHERE json_extract(dicom_tags, '$.PatientID') = ?",
                                         (patient_id,)
                                     )
                                 else:
@@ -402,7 +408,7 @@ class DICOMSCPService:
                             series_uid = getattr(query_ds, 'SeriesInstanceUID', '')
                             if series_uid:
                                 cursor.execute(
-                                    "SELECT file_path FROM dicom_files WHERE series_instance_uid = ?",
+                                    "SELECT file_path FROM dicom_file WHERE json_extract(dicom_tags, '$.SeriesInstanceUID') = ?",
                                     (series_uid,)
                                 )
                         
@@ -410,7 +416,7 @@ class DICOMSCPService:
                             sop_uid = getattr(query_ds, 'SOPInstanceUID', '')
                             if sop_uid:
                                 cursor.execute(
-                                    "SELECT file_path FROM dicom_files WHERE sop_instance_uid = ?",
+                                    "SELECT file_path FROM dicom_file WHERE json_extract(dicom_tags, '$.SOPInstanceUID') = ?",
                                     (sop_uid,)
                                 )
                         
@@ -624,43 +630,52 @@ class DICOMSCPService:
     
     async def _store_metadata_in_database(self, ds: Dataset, file_path: str):
         """
-        Store DICOM metadata in database
+        Store DICOM metadata in database using existing unified schema
         
         Args:
             ds: DICOM dataset
             file_path: Path where file was stored
         """
         try:
-            # Extract key DICOM tags
-            metadata = {
-                'sop_instance_uid': str(getattr(ds, 'SOPInstanceUID', '')),
-                'sop_class_uid': str(getattr(ds, 'SOPClassUID', '')),
-                'study_instance_uid': str(getattr(ds, 'StudyInstanceUID', '')),
-                'series_instance_uid': str(getattr(ds, 'SeriesInstanceUID', '')),
-                'patient_id': str(getattr(ds, 'PatientID', '')),
-                'patient_name': str(getattr(ds, 'PatientName', '')),
-                'study_date': str(getattr(ds, 'StudyDate', '')),
-                'study_time': str(getattr(ds, 'StudyTime', '')),
-                'modality': str(getattr(ds, 'Modality', '')),
-                'institution_name': str(getattr(ds, 'InstitutionName', '')),
-                'file_path': file_path,
-                'received_at': datetime.now().isoformat()
+            # Extract key DICOM tags and store as JSON
+            dicom_tags = {
+                'SOPInstanceUID': str(getattr(ds, 'SOPInstanceUID', '')),
+                'SOPClassUID': str(getattr(ds, 'SOPClassUID', '')),
+                'StudyInstanceUID': str(getattr(ds, 'StudyInstanceUID', '')),
+                'SeriesInstanceUID': str(getattr(ds, 'SeriesInstanceUID', '')),
+                'PatientID': str(getattr(ds, 'PatientID', '')),
+                'PatientName': str(getattr(ds, 'PatientName', '')),
+                'StudyDate': str(getattr(ds, 'StudyDate', '')),
+                'StudyTime': str(getattr(ds, 'StudyTime', '')),
+                'Modality': str(getattr(ds, 'Modality', '')),
+                'InstitutionName': str(getattr(ds, 'InstitutionName', '')),
+                'ReceivedAt': datetime.now().isoformat()
             }
             
-            # Insert into database
+            # Get file info
+            file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+            filename = os.path.basename(file_path)
+            
+            # Insert into the existing dicom_file table
             query = """
-                INSERT INTO dicom_files (
-                    sop_instance_uid, sop_class_uid, study_instance_uid, 
-                    series_instance_uid, patient_id, patient_name,
-                    study_date, study_time, modality, institution_name,
-                    file_path, received_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO dicom_file (
+                    filename, file_path, file_size, dicom_tags,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
             """
             
-            values = tuple(metadata.values())
+            values = (
+                filename,
+                file_path,
+                file_size,
+                json.dumps(dicom_tags),
+                datetime.now(),
+                datetime.now()
+            )
+            
             await self.db_manager.execute_query(query, values)
             
-            logger.debug(f"Stored metadata for SOP Instance: {metadata['sop_instance_uid']}")
+            logger.debug(f"Stored metadata for file: {filename} (SOP: {dicom_tags.get('SOPInstanceUID', 'Unknown')})")
             
         except Exception as e:
             logger.error(f"Failed to store metadata in database: {e}")
@@ -771,46 +786,53 @@ class DICOMSCPService:
         logger.info("DICOM SCP statistics reset")
 
 
-# Helper function to create database table for DICOM files
+# Helper function to ensure database compatibility for DICOM storage
 async def create_dicom_tables(db_manager: DatabaseManager):
     """
-    Create database tables for DICOM storage
+    Ensure database compatibility for DICOM storage using existing unified schema
     
     Args:
         db_manager: Database manager instance
     """
-    create_table_query = """
-        CREATE TABLE IF NOT EXISTS dicom_files (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            sop_instance_uid TEXT UNIQUE NOT NULL,
-            sop_class_uid TEXT,
-            study_instance_uid TEXT,
-            series_instance_uid TEXT,
-            patient_id TEXT,
-            patient_name TEXT,
-            study_date TEXT,
-            study_time TEXT,
-            modality TEXT,
-            institution_name TEXT,
-            file_path TEXT,
-            received_at TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    # Check if dicom_file table exists and has the required columns
+    try:
+        # The table should already exist from the unified schema
+        # Just verify it exists
+        result = await db_manager.execute_query(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='dicom_file'"
         )
-    """
-    
-    await db_manager.execute_query(create_table_query)
-    
-    # Create indexes for common queries
-    indexes = [
-        "CREATE INDEX IF NOT EXISTS idx_patient_id ON dicom_files(patient_id)",
-        "CREATE INDEX IF NOT EXISTS idx_study_instance_uid ON dicom_files(study_instance_uid)",
-        "CREATE INDEX IF NOT EXISTS idx_series_instance_uid ON dicom_files(series_instance_uid)",
-        "CREATE INDEX IF NOT EXISTS idx_study_date ON dicom_files(study_date)",
-        "CREATE INDEX IF NOT EXISTS idx_modality ON dicom_files(modality)"
-    ]
-    
-    for index_query in indexes:
-        await db_manager.execute_query(index_query)
+        
+        if not result:
+            # If table doesn't exist, create it with basic structure
+            # This ensures compatibility with the existing unified schema
+            create_table_query = """
+                CREATE TABLE IF NOT EXISTS dicom_file (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    filename VARCHAR(255) NOT NULL,
+                    file_path VARCHAR(512),
+                    file_size INTEGER,
+                    dicom_tags TEXT,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """
+            await db_manager.execute_query(create_table_query)
+        
+        # Create indexes on the actual table (dicom_file), not the view
+        indexes = [
+            "CREATE INDEX IF NOT EXISTS idx_dicom_file_path ON dicom_file(file_path)",
+            "CREATE INDEX IF NOT EXISTS idx_dicom_filename ON dicom_file(filename)",
+            "CREATE INDEX IF NOT EXISTS idx_dicom_created_at ON dicom_file(created_at)"
+        ]
+        
+        for index_query in indexes:
+            await db_manager.execute_query(index_query)
+            
+    except Exception as e:
+        # Log error but don't fail - table operations should continue
+        from core.custom_logging import get_logger
+        logger = get_logger(__name__)
+        logger.warning(f"Could not create DICOM indexes: {e}")
 
 
 __all__ = ['DICOMSCPService', 'create_dicom_tables']

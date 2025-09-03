@@ -1332,7 +1332,7 @@ Response:"""
         """Start DICOM discovery"""
         try:
             # Import DICOM discovery service
-            from ..services.dicom.discovery import DICOMDiscoveryService
+            from service.dicom.discovery import DICOMDiscoveryService
             
             # Create discovery service instance
             discovery_service = DICOMDiscoveryService(self.db_manager, self.settings)
@@ -1370,7 +1370,7 @@ Response:"""
         """
         try:
             # Import DICOM SCP service
-            from ..services.dicom.scp import DICOMSCPService, create_dicom_tables
+            from service.dicom.scp import DICOMSCPService, create_dicom_tables
             
             # Ensure database tables exist
             await create_dicom_tables(self.db_manager)
@@ -1410,7 +1410,7 @@ Response:"""
         """Start DICOM SCU operations"""
         try:
             # Import DICOM SCU service
-            from ..services.dicom.scu import DICOMSCUService
+            from service.dicom.scu import DICOMSCUService
             
             # Create SCU service instance
             scu_service = DICOMSCUService(self.db_manager, self.settings)
@@ -1878,7 +1878,7 @@ The AI will interpret your intent and execute the appropriate actions.
                 return f"Path is not a directory: {directory}"
             
             # Import DICOM scanner service
-            from ..services.dicom.scanner import DICOMDirectoryScanner
+            from service.dicom.scanner import DICOMDirectoryScanner
             
             # Create scanner instance
             scanner = DICOMDirectoryScanner(self.db_manager, self.settings)

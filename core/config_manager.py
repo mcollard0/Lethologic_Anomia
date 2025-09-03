@@ -117,7 +117,7 @@ class DatabaseConfigManager:
             ConfigItem("redis", "heartbeat_interval", "30", "Heartbeat interval in seconds", "integer"),
             
             # Database Configuration
-            ConfigItem("database", "path", "migration_service.db", "SQLite database path", "string"),
+            ConfigItem("database", "path", "lethologic_anomia.db", "SQLite database path", "string"),
             ConfigItem("database", "pool_size", "10", "Database connection pool size", "integer"),
             ConfigItem("database", "timeout", "30", "Database query timeout", "integer"),
             

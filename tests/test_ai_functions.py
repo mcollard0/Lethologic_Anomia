@@ -329,7 +329,7 @@ class TestAIFunctions:
         
         # Verify site was created
         site_result = await ai_service.db_manager.execute_query(
-            "SELECT * FROM sites WHERE sitename = ?", ("TestSite",)
+            "SELECT * FROM site WHERE sitename = ?", ("TestSite",)
         )
         assert site_result
         assert site_result[0]['sitename'] == 'TestSite'
@@ -339,17 +339,17 @@ class TestAIFunctions:
         """Test INSERT query function requires appropriate trust level"""
         # Test with low trust level
         ai_service.trust_level = 5
-        result = await ai_service._execute_insert_query("INSERT INTO sites (sitename) VALUES ('LowTrustTest')")
+        result = await ai_service._execute_insert_query("INSERT INTO site (sitename) VALUES ('LowTrustTest')")
         assert "❌ INSERT/UPDATE/DELETE queries require trust level 10+" in result
         
         # Test with high trust level
         ai_service.trust_level = 15
-        result = await ai_service._execute_insert_query("INSERT INTO sites (sitename, status) VALUES ('HighTrustTest', 'active')")
+        result = await ai_service._execute_insert_query("INSERT INTO site (sitename, status) VALUES ('HighTrustTest', 'active')")
         assert "✅ Query executed successfully" in result
         
         # Verify the insert actually worked
         verify_result = await ai_service.db_manager.execute_query(
-            "SELECT * FROM sites WHERE sitename = ?", ("HighTrustTest",)
+            "SELECT * FROM site WHERE sitename = ?", ("HighTrustTest",)
         )
         assert verify_result
         assert verify_result[0]['sitename'] == 'HighTrustTest'
@@ -361,10 +361,10 @@ class TestAIFunctions:
         ai_service.trust_level = 20  # Max trust
         
         dangerous_queries = [
-            "DROP TABLE sites",
-            "TRUNCATE TABLE sites",
-            "DELETE FROM users",
-            "UPDATE users SET password = 'hacked'"
+            "DROP TABLE site",
+            "TRUNCATE TABLE site",
+            "DELETE FROM user",
+            "UPDATE user SET password = 'hacked'"
         ]
         
         for query in dangerous_queries:
@@ -376,20 +376,20 @@ class TestAIFunctions:
     async def test_natural_language_select_parsing(self, ai_service):
         """Test parsing of natural language SELECT queries"""
         # Test simple natural language query
-        parsed = ai_service._parse_natural_language_select("select sitename from sites")
-        assert parsed == "SELECT sitename FROM sites"
+        parsed = ai_service._parse_natural_language_select("select sitename from site")
+        assert parsed == "SELECT sitename FROM site"
         
         # Test with multiple columns
-        parsed = ai_service._parse_natural_language_select("select sitename, status from sites")
-        assert parsed == "SELECT sitename, status FROM sites"
+        parsed = ai_service._parse_natural_language_select("select sitename, status from site")
+        assert parsed == "SELECT sitename, status FROM site"
         
         # Test with 'all' keyword
-        parsed = ai_service._parse_natural_language_select("select all from sites")
-        assert parsed == "SELECT * FROM sites"
+        parsed = ai_service._parse_natural_language_select("select all from site")
+        assert parsed == "SELECT * FROM site"
         
         # Test already proper SQL
-        parsed = ai_service._parse_natural_language_select("SELECT * FROM sites WHERE status = 'active'")
-        assert parsed == "SELECT * FROM sites WHERE status = 'active'"
+        parsed = ai_service._parse_natural_language_select("SELECT * FROM site WHERE status = 'active'")
+        assert parsed == "SELECT * FROM site WHERE status = 'active'"
     
     # Test formatted query results
     async def test_formatted_query_results(self, ai_service):

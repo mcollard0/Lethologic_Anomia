@@ -314,10 +314,9 @@ def main():
     print("🚀 Database Timestamp Defaults Migration")
     print("=" * 60)
     
-    # Database files to migrate
+    # Database files to migrate (unified single database)
     db_files = [
-        "/home/michael/FASTESTARCHIVE/Archive/Lethologic Anomia/lethologic_anomia.db",
-        "/home/michael/FASTESTARCHIVE/Archive/Lethologic Anomia/migration_service.db"
+        "/home/michael/FASTESTARCHIVE/Archive/Lethologic Anomia/lethologic_anomia.db"
     ]
     
     for db_file in db_files:

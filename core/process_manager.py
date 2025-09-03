@@ -551,6 +551,12 @@ class ProcessManager:
             config: Service configuration
         """
         try:
+            # Add project root to sys.path to ensure imports work
+            import sys
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            if project_root not in sys.path:
+                sys.path.insert(0, project_root)
+            
             from service.dicom.scp import DICOMSCPService, create_dicom_tables
             
             logger.info(f"Starting DICOM SCP service {process_id}")
