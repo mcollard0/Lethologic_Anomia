@@ -8,14 +8,11 @@
 
 -- Configuration entries table (supports hierarchical service-based config)
 CREATE TABLE IF NOT EXISTS config (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name VARCHAR(255) UNIQUE NOT NULL,
-    value TEXT NOT NULL,
-    description TEXT,
-    service VARCHAR(64),  -- Optional service grouping (e.g., 'dicom_scp', 'web_interface')
-    value_type VARCHAR(20) DEFAULT 'string',  -- string, integer, boolean, json
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    service TEXT NOT NULL,  -- Service grouping (e.g., 'LA', 'AI', 'SCP', 'WEB')
+    name TEXT NOT NULL,     -- Configuration name
+    value TEXT,             -- Configuration value (nullable)
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (service, name)
 );
 
 -- Site table (normalized - basic site information only)
@@ -341,10 +338,10 @@ CREATE VIEW IF NOT EXISTS clients AS SELECT * FROM device;
 -- =================================================================
 
 -- Insert default configurations
-INSERT OR IGNORE INTO config (name, value, description, service, value_type) VALUES
-    ('database_version', '2.0.0', 'Unified database schema version', 'system', 'string'),
-    ('system_initialized', 'true', 'Whether system has been initialized', 'system', 'boolean'),
-    ('auto_start_services', 'true', 'Whether to auto-start core services', 'system', 'boolean');
+INSERT OR IGNORE INTO config (service, name, value) VALUES
+    ('SYSTEM', 'database_version', '2.0.0'),
+    ('SYSTEM', 'system_initialized', 'true'),
+    ('SYSTEM', 'auto_start_services', 'true');
 
 -- Insert default site
 INSERT OR IGNORE INTO site (sitename, status) VALUES 

@@ -301,10 +301,11 @@ class RedisManager:
         
         if self.db_manager:
             try:
-                await self.db_manager.set_config(
+                await self.db_manager.execute_query("INSERT OR REPLACE INTO config (service, name, value, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)", (
+                    self.process_type,
                     f"process_{self.process_id}",
                     json.dumps(process_info)
-                )
+                ))
             except Exception as e:
                 logger.warning(f"Failed to register in database: {e}")
         
@@ -329,8 +330,8 @@ class RedisManager:
         if self.db_manager:
             try:
                 await self.db_manager.execute_query(
-                    "DELETE FROM config WHERE name = ?",
-                    (f"process_{self.process_id}",)
+                    "DELETE FROM config WHERE service = ? AND name = ?",
+                    (self.process_type, f"process_{self.process_id}")
                 )
             except Exception as e:
                 logger.warning(f"Failed to unregister from database: {e}")
@@ -392,7 +393,7 @@ class RedisManager:
         
         if self.db_manager:
             try:
-                result = await self.db_manager.get_config(f"process_{process_id}")
+                result = await self.db_manager.get_config(self.process_type, f"process_{process_id}")
                 if result:
                     return json.loads(result)
             except Exception:

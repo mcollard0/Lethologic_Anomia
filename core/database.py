@@ -56,20 +56,13 @@ class LogEntry(Base):
 
 
 class ConfigEntry(Base):
-    """Configuration entries table - equivalent to C++ CONFIG table"""
+    """Configuration entries table - simplified schema with composite primary key"""
     __tablename__ = 'config'
     
-    id: Mapped[int] = mapped_column(primary_key=True)
-    service: Mapped[str] = mapped_column(String(64))  # Service name (e.g., dicom_scp, web_interface)
-    name: Mapped[str] = mapped_column(String(255))  # Setting name (e.g., port, host)
-    value: Mapped[str] = mapped_column(Text)  # Setting value
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    value_type: Mapped[str] = mapped_column(String(20), default='string')  # string, integer, boolean, json
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    service: Mapped[str] = mapped_column(String(64), primary_key=True)  # Service name (e.g., 'LA', 'AI', 'SCP')
+    name: Mapped[str] = mapped_column(String(255), primary_key=True)    # Setting name (e.g., port, host)
+    value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)   # Setting value (nullable)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
-    
-    # Composite unique constraint on service and name
-    __table_args__ = (sa.UniqueConstraint('service', 'name'),)
 
 
 class Site(Base):
@@ -461,11 +454,12 @@ class DatabaseManager:
         }
         await self.mongodb_db.log.insert_one(document)
     
-    async def get_config(self, name: str, default: Optional[str] = None) -> Optional[str]:
+    async def get_config(self, service: str, name: str, default: Optional[str] = None) -> Optional[str]:
         """
         Get configuration value
         
         Args:
+            service: Service name
             name: Configuration name
             default: Default value if not found
             
@@ -474,30 +468,31 @@ class DatabaseManager:
         """
         try:
             result = await self.execute_query(
-                "SELECT value FROM config WHERE name = ?", (name,)
+                "SELECT value FROM config WHERE service = ? AND name = ?", (service, name)
             )
             if result and result[0].get('value'):
                 return result[0]['value']
             return default
         except Exception as e:
-            logger.error(f"Error getting config {name}: {e}")
+            logger.error(f"Error getting config {service}.{name}: {e}")
             return default
     
-    async def set_config(self, name: str, value: str) -> None:
+    async def set_config(self, service: str, name: str, value: str) -> None:
         """
         Set configuration value
         
         Args:
+            service: Service name
             name: Configuration name
             value: Configuration value
         """
         try:
             await self.execute_query(
-                "INSERT OR REPLACE INTO config (name, value) VALUES (?, ?)",
-                (name, value)
+                "INSERT OR REPLACE INTO config (service, name, value, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                (service, name, value)
             )
         except Exception as e:
-            logger.error(f"Error setting config {name}: {e}")
+            logger.error(f"Error setting config {service}.{name}: {e}")
             raise
     
 

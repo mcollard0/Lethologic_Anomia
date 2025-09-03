@@ -328,7 +328,8 @@ class AIService:
         try:
             # Load last responses
             result = await self.db_manager.execute_query(
-                "SELECT value FROM config WHERE name = 'LAST RESPONSES'"
+                "SELECT value FROM config WHERE service = ? AND name = ?",
+                ("LA", "LAST RESPONSES")
             )
             
             if result and result[0].get('value'):
@@ -345,7 +346,8 @@ class AIService:
             
             # Load response position
             result = await self.db_manager.execute_query(
-                "SELECT value FROM config WHERE name = 'LAST RESPONSE POSITION'"
+                "SELECT value FROM config WHERE service = ? AND name = ?",
+                ("LA", "LAST RESPONSE POSITION")
             )
             
             if result and result[0].get('value'):
@@ -353,7 +355,8 @@ class AIService:
                 
             # Load trust level
             result = await self.db_manager.execute_query(
-                "SELECT value FROM config WHERE name = 'TRUST LEVEL'"
+                "SELECT value FROM config WHERE service = ? AND name = ?",
+                ("LA", "TRUST LEVEL")
             )
             
             if result and result[0].get('value'):
@@ -368,20 +371,20 @@ class AIService:
             # Save responses
             responses_json = json.dumps(self.last_responses)
             await self.db_manager.execute_query(
-                "INSERT OR REPLACE INTO config (name, value) VALUES (?, ?)",
-                ("LAST RESPONSES", responses_json)
+                "INSERT OR REPLACE INTO config (service, name, value, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                ("LA", "LAST RESPONSES", responses_json)
             )
             
             # Save position
             await self.db_manager.execute_query(
-                "INSERT OR REPLACE INTO config (name, value) VALUES (?, ?)",
-                ("LAST RESPONSE POSITION", str(self.response_position))
+                "INSERT OR REPLACE INTO config (service, name, value, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                ("LA", "LAST RESPONSE POSITION", str(self.response_position))
             )
             
             # Save trust level
             await self.db_manager.execute_query(
-                "INSERT OR REPLACE INTO config (name, value) VALUES (?, ?)",
-                ("TRUST LEVEL", str(self.trust_level))
+                "INSERT OR REPLACE INTO config (service, name, value, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                ("LA", "TRUST LEVEL", str(self.trust_level))
             )
             
         except Exception as e:
@@ -407,8 +410,8 @@ class AIService:
         
         # Log the command
         await self.db_manager.execute_query(
-            "INSERT OR REPLACE INTO config (name, value) VALUES (?, ?)",
-            ("LAST COMMAND", user_input)
+            "INSERT OR REPLACE INTO config (service, name, value, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+            ("LA", "LAST COMMAND", user_input)
         )
         
         # Show thinking indicator
@@ -1777,8 +1780,8 @@ The AI will interpret your intent and execute the appropriate actions.
             }
             
             await self.db_manager.execute_query(
-                "INSERT OR REPLACE INTO config (name, value) VALUES (?, ?)",
-                ("LAST_MATH_QUIZ", json.dumps(quiz_data))
+                "INSERT OR REPLACE INTO config (service, name, value, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                ("LA", "LAST_MATH_QUIZ", json.dumps(quiz_data))
             )
             
             return f"Math Quiz ({difficulty.capitalize()} level):\n\nSolve: {problem}\n\n(Answer: {answer})"
@@ -1850,8 +1853,8 @@ The AI will interpret your intent and execute the appropriate actions.
             }
             
             await self.db_manager.execute_query(
-                "INSERT OR REPLACE INTO config (name, value) VALUES (?, ?)",
-                (f"INDEX_{directory.replace('/', '_')}", json.dumps(index_data))
+                "INSERT OR REPLACE INTO config (service, name, value, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                ("LA", f"INDEX_{directory.replace('/', '_')}", json.dumps(index_data))
             )
             
             return "\n".join(result)
@@ -2010,8 +2013,8 @@ The AI will interpret your intent and execute the appropriate actions.
             
             # Log the service class start in the database
             await self.db_manager.execute_query(
-                "INSERT OR REPLACE INTO config (name, value) VALUES (?, ?)",
-                ("SERVICE_CLASS_PROVIDER", json.dumps({
+                "INSERT OR REPLACE INTO config (service, name, value, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                ("SCP", "SERVICE_CLASS_PROVIDER", json.dumps({
                     'service_class': service_class,
                     'started_at': datetime.now().isoformat(),
                     'status': 'running'
@@ -2032,7 +2035,8 @@ The AI will interpret your intent and execute the appropriate actions.
         try:
             # Get or initialize game statistics
             stats_result = await self.db_manager.execute_query(
-                "SELECT value FROM config WHERE name = 'LMAD_STATS'"
+                "SELECT value FROM config WHERE service = ? AND name = ?",
+                ("LA", "LMAD_STATS")
             )
             
             if stats_result and stats_result[0].get('value'):
@@ -2071,8 +2075,8 @@ The AI will interpret your intent and execute the appropriate actions.
             
             # Save updated statistics
             await self.db_manager.execute_query(
-                "INSERT OR REPLACE INTO config (name, value) VALUES (?, ?)",
-                ('LMAD_STATS', json.dumps(stats))
+                "INSERT OR REPLACE INTO config (service, name, value, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                ("LA", "LMAD_STATS", json.dumps(stats))
             )
             
             # Calculate win percentages
@@ -2229,8 +2233,8 @@ The AI will interpret your intent and execute the appropriate actions.
             
             # Save the question asked for potential follow-up
             await self.db_manager.execute_query(
-                "INSERT OR REPLACE INTO config (name, value) VALUES (?, ?)",
-                ('LAST_REVERSE_TURING', json.dumps({
+                "INSERT OR REPLACE INTO config (service, name, value, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                ("LA", "LAST_REVERSE_TURING", json.dumps({
                     'question': selected,
                     'asked_at': datetime.now().isoformat()
                 }))
@@ -2380,8 +2384,8 @@ The AI will interpret your intent and execute the appropriate actions.
             
             # Log the query execution
             await self.db_manager.execute_query(
-                "INSERT OR REPLACE INTO config (name, value) VALUES (?, ?)",
-                ('LAST_INSERT_QUERY', json.dumps({
+                "INSERT OR REPLACE INTO config (service, name, value, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                ("LA", "LAST_INSERT_QUERY", json.dumps({
                     'query': query,
                     'executed_at': datetime.now().isoformat(),
                     'trust_level': self.trust_level,
@@ -2501,8 +2505,8 @@ The AI will interpret your intent and execute the appropriate actions.
             
             # Log the operation
             await self.db_manager.execute_query(
-                "INSERT OR REPLACE INTO config (name, value) VALUES (?, ?)",
-                ('LAST_ADD_COLUMNS', json.dumps({
+                "INSERT OR REPLACE INTO config (service, name, value, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                ("LA", "LAST_ADD_COLUMNS", json.dumps({
                     'tablename': tablename,
                     'added_tags': added_columns,
                     'skipped_tags': skipped_columns,
@@ -2627,8 +2631,8 @@ The AI will interpret your intent and execute the appropriate actions.
             
             # Log the operation
             await self.db_manager.execute_query(
-                "INSERT OR REPLACE INTO config (name, value) VALUES (?, ?)",
-                ('LAST_REMOVE_COLUMNS', json.dumps({
+                "INSERT OR REPLACE INTO config (service, name, value, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                ("LA", "LAST_REMOVE_COLUMNS", json.dumps({
                     'tablename': tablename,
                     'removed_tags': columns_to_remove,
                     'not_found_tags': not_found_columns,
@@ -2694,7 +2698,8 @@ async def ai_loop(process_manager: ProcessManager, settings: Settings) -> None:
                 if not user_input:
                     # Use last command if empty input
                     result = await process_manager.db_manager.execute_query(
-                        "SELECT value FROM config WHERE name = 'LAST COMMAND'"
+                        "SELECT value FROM config WHERE service = ? AND name = ?",
+                        ("LA", "LAST COMMAND")
                     )
                     if result and result[0].get('value'):
                         user_input = result[0]['value']
