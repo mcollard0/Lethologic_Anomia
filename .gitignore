@@ -35,6 +35,9 @@ Thumbs.db
 config.json
 .env
 
+# AI model offload directory
+ai/offload/
+
 # DICOM files and test data
 etc/
 generated_dicom/

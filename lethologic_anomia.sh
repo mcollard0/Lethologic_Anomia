@@ -12,9 +12,8 @@ NC='\033[0m' # No Color
 # Check if virtual environment exists
 if [ ! -d "venv" ]; then
     echo -e "${RED}Error: Virtual environment 'venv' not found!${NC}"
-    echo "Please run: python3 -m venv venv"
-    echo "Then install dependencies: ./venv/bin/pip install -r requirements.txt"
-    exit 1
+    python3 -m venv venv
+    ./venv/bin/pip install -r requirements.txt
 fi
 
 # Check if lethologic_anomia.py exists
@@ -28,5 +27,12 @@ echo -e "${GREEN}🏥 Lethologic Anomia - Medical Image Migration Service${NC}"
 echo -e "${YELLOW}Using virtual environment: venv${NC}"
 echo ""
 
+# Detect shell and set correct activation script
+if [ -n "$FISH_VERSION" ] || ps -p $$ -o comm= | grep -q fish; then
+    ACTIVATE_SCRIPT="venv/bin/activate.fish"
+else
+    ACTIVATE_SCRIPT="venv/bin/activate"
+fi
+
 # Activate virtual environment and run the program
-source venv/bin/activate && python lethologic_anomia.py "$@"
+source $ACTIVATE_SCRIPT && python lethologic_anomia.py "$@"

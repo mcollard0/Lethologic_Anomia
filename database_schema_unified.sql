@@ -11,6 +11,9 @@ CREATE TABLE IF NOT EXISTS config (
     service TEXT NOT NULL,  -- Service grouping (e.g., 'LA', 'AI', 'SCP', 'WEB')
     name TEXT NOT NULL,     -- Configuration name
     value TEXT,             -- Configuration value (nullable)
+    description TEXT,       -- Human-readable description
+    value_type TEXT DEFAULT 'string',  -- string, integer, boolean, json
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (service, name)
 );

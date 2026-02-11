@@ -5,25 +5,11 @@ Lethologic Anomia - Entry Point (Main)
 This is a Python port of the C++ DICOM/HL7 Migration Service with AI integration.
 Converts the original Windows service to a cross-platform Python application.
 
-C++/Python author: Michael Collard
+C++/Python author: Michael Collard (Yeah, I know, I'm sorry.)
 """
 
-import asyncio
-import json
-import os
-import platform
-import signal
-import sys
-from pathlib import Path
-from typing import Any, Dict, Optional
-
-import click
-from dotenv import load_dotenv
-from rich.console import Console
-from rich.traceback import install
-
-# Install rich traceback for better error display
-install()
+import click, asyncio, json, os, platform, signal, sys; from pathlib import Path; from typing import Any, Dict, Optional; from dotenv import load_dotenv; from rich.console import Console; from rich.traceback import install
+install(); # Install rich traceback for better error display
 
 # Add the project root to Python path
 project_root = Path(__file__).parent

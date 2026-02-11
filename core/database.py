@@ -62,6 +62,9 @@ class ConfigEntry(Base):
     service: Mapped[str] = mapped_column(String(64), primary_key=True)  # Service name (e.g., 'LA', 'AI', 'SCP')
     name: Mapped[str] = mapped_column(String(255), primary_key=True)    # Setting name (e.g., port, host)
     value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)   # Setting value (nullable)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # Human-readable description
+    value_type: Mapped[str] = mapped_column(Text, default='string')     # Type: string, integer, boolean, json
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
 
 
