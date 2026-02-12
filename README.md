@@ -82,16 +82,77 @@ Supports:
 - 20 most common modalities (CT, MR, XR, US, MG, PET, etc.)
 - Realistic metadata and proper DICOM structure
 
+## AI Capabilities
+
+Lethologic Anomia features a sophisticated AI engine designed for autonomous operation and natural language interaction.
+
+### Multi-Provider Support
+The system supports multiple AI backends with configurable priority:
+
+1.  **OpenAI**: GPT-3.5/GPT-4 for high-reasoning tasks.
+2.  **Anthropic**: Claude 3 (Opus/Sonnet/Haiku) for complex analysis and tool use.
+3.  **XAI**: Grok via XAI API.
+4.  **Local HuggingFace**: Runs offline using `Mistral-7B-Instruct` (primary) or `DialoGPT` (fallback). Automatically optimizes for available RAM/VRAM (FP16, INT8, or disk offload).
+
+### Speech Interface
+Integrated voice capabilities enable hands-free operation:
+-   **Speech-TO-Text (STT)**: Uses OpenAI's **Whisper** model (local or API) for high-accuracy command transcription.
+-   **Text-To-Speech (TTS)**: Uses `pyttsx3` or `gTTS` to provide vocal feedback and status updates.
+
+### Medical Image Analysis
+Advanced AI-powered analysis of medical imaging data:
+-   **Anomaly Detection**: Identifies potential abnormalities using statistical and edge-detection algorithms.
+-   **Classification**: Includes pre-trained models for Chest X-ray pathology (Swin Transformer).
+-   **DICOM Integration**: Direct analysis of DICOM files with automatic windowing and metadata extraction.
+-   **Standardization**: Automatic normalization and preprocessing for consistent analysis.
+
+### Autonomous Agency
+The AI operates with a dynamic **Trust & Aggression** system:
+-   **Trust Level (-127 to 127)**: Determines permission to execute sensitive actions (e.g., database writes, service restarts).
+    -   *Low Trust*: Read-only access (queries, status checks).
+    -   *High Trust*: Full autonomous control (migrations, configuration changes).
+-   **Aggression Level (-127 to 127)**: Influences the AI's initiative and personality.
+
+### Natural Language Control
+Control the entire system using natural language commands:
+
+```text
+"Start the DICOM SCP on port 11112"
+"Create a new user named 'admin' with password 'secure123'"
+"Migrate all CT studies from Site A to Site B"
+"What is the system status?"
+```
+
 ## Configuration
 
 ### Environment Variables
 ```bash
 export DATABASE_URL="sqlite:///migration.db"
 export REDIS_URL="redis://localhost:6379"
-export OPENAI_API_KEY="your-api-key"          # Optional: for AI features
-export ANTHROPIC_API_KEY="your-api-key"       # Optional: alternative AI
+
+# AI Configuration
+export AI_PROVIDERS="openai,anthropic,xai,huggingface_local" # Priority order
+export OPENAI_API_KEY="sk-..."
+export ANTHROPIC_API_KEY="sk-ant-..."
+export XAI_API_KEY="key..."
+export HUGGINGFACE_API_KEY="hf_..."           # Optional for HF API
+
 export WEB_PORT="50443"                       # Web interface port
 export SSH_PORT="50022"                       # SSH server port
+```
+
+### CLI Model Management
+You can manage AI settings directly from the CLI:
+
+```bash
+# List available models
+python lethologic_anomia.py --list-models
+
+# Set active model
+python lethologic_anomia.py --set-model "anthropic/claude-3-sonnet"
+
+# Adjust autonomy parameters
+python lethologic_anomia.py --set-trust 10 --set-aggression 5
 ```
 
 ### Configuration File
@@ -100,6 +161,11 @@ Create a `config.json` file:
 {
   "database_url": "sqlite:///migration.db",
   "redis_url": "redis://localhost:6379",
+  "ai": {
+    "providers": ["openai", "anthropic"],
+    "trust_level": 5,
+    "voice_enabled": true
+  },
   "web_port": 50443,
   "ssh_enabled": true,
   "debug": false
@@ -118,8 +184,8 @@ Create a `config.json` file:
 ### Directory Structure
 ```
 Lethologic Anomia/
-├── core/                 # Core system modules
-├── services/            # Service implementations  
+├── core/                 # Core system modules (AI Loop, Process Manager)
+├── services/            # Service implementations (DICOM, HL7, Web, SSH)
 ├── utils/               # Utility functions
 ├── dicom/               # DICOM-specific modules
 ├── hl7/                 # HL7 processing
@@ -152,8 +218,9 @@ sudo ./lethologic_anomia.sh --uninstall    # Remove system service
 ### Common Issues
 
 **"AI loop not available" warning**
-- This is normal if AI dependencies (openai, transformers) aren't installed
-- The service runs in basic mode without AI features
+- This indicates the system is running in **Basic Mode**.
+- The service is fully functional for DICOM/HL7 migration but lacks voice/text intelligence.
+- To enable AI: Install dependencies (`pip install -r requirements.txt`) and configure API keys.
 
 **Virtual environment issues**
 - Ensure you're using Python 3.8+
