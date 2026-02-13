@@ -233,12 +233,30 @@ class AIService:
             
             # Default config for GPU
             if torch.cuda.is_available():
-                config = {
-                    'torch_dtype': torch.float16,
-                    'device_map': 'auto',
-                    'precision': 'fp16',
-                    'reason': 'GPU available'
-                }
+                try:
+                    # check GPU memory
+                    total_vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+                    logger.info(f"GPU VRAM: {total_vram_gb:.2f} GB")
+                    
+                    # Reserve memory for Whisper and system (e.g., 4GB)
+                    reserved_gb = 4.0
+                    max_llm_vram_gb = max(0.5, total_vram_gb - reserved_gb)
+                    
+                    config = {
+                        'torch_dtype': torch.float16,
+                        'device_map': 'auto',
+                        'precision': 'fp16',
+                        'max_memory': {0: f"{int(max_llm_vram_gb)}GiB", "cpu": "32GiB"},
+                        'reason': f'GPU available ({total_vram_gb:.1f}GB), limiting LLM to {max_llm_vram_gb:.1f}GB'
+                    }
+                except Exception as e:
+                    logger.warning(f"Error checking GPU memory: {e}")
+                    config = {
+                        'torch_dtype': torch.float16,
+                        'device_map': 'auto',
+                        'precision': 'fp16',
+                        'reason': 'GPU available (memory check failed)'
+                    }
             else:
                 # CPU-only environment - determine best precision based on available memory
                 safety_margin = 0.85  # Use 85% of available memory at most
