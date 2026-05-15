@@ -833,12 +833,13 @@ class ProcessManager:
             if ssh_config.get('enabled', self.settings.ssh.ssh_enabled):
                 try:
                     port = ssh_config.get('port', self.settings.ssh.ssh_port)
-                    process_id = await self.start_process(
-                        ProcessType.SSH_SERVER,
-                        {'port': port}
-                    )
-                    started_processes.append(process_id)
-                    logger.info(f"Auto-started SSH server service: {process_id} on port {port}")
+                    if port > 0:
+                        process_id = await self.start_process(
+                            ProcessType.SSH_SERVER,
+                            {'port': port}
+                        )
+                        started_processes.append(process_id)
+                        logger.info(f"Auto-started SSH server service: {process_id} on port {port}")
                 except Exception as e:
                     logger.error(f"Failed to auto-start SSH server: {e}")
             

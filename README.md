@@ -138,7 +138,7 @@ export XAI_API_KEY="key..."
 export HUGGINGFACE_API_KEY="hf_..."           # Optional for HF API
 
 export WEB_PORT="50443"                       # Web interface port
-export SSH_PORT="50022"                       # SSH server port
+export SSH_PORT="50022"                       # SSH server port (0/-1 or missing disabled)
 ```
 
 ### CLI Model Management

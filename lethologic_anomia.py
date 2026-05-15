@@ -32,6 +32,7 @@ from core.redis_manager import RedisManager
 from service.web_interface import create_app
 from service.ssh_server import SSHServer
 from util.platform_utils import detect_os, setup_signal_handlers
+from util.process_cleanup import check_and_cleanup_zombies
 
 # Initialize console and logger
 console = Console()
@@ -275,6 +276,7 @@ class ConfigCLI:
 @click.option('--uninstall', is_flag=True, help='Uninstall system service')
 @click.option('--debug', is_flag=True, help='Enable debug mode')
 @click.option('--help-extended', is_flag=True, help='Show extended help')
+@click.option('--force-cleanup', is_flag=True, help='Force cleanup of zombie processes on startup')
 # DICOM operations
 @click.option('--port', '-p', type=int, help='DICOM port number')
 @click.option('--aet', '-a', type=str, help='DICOM AE Title')
@@ -302,7 +304,7 @@ class ConfigCLI:
 @click.option('--schema', is_flag=True, help='Show database schema')
 @click.option('--log', type=str, metavar='<message>', help='Add message to log')
 def main(ctx, config: Optional[str], daemon: bool, interactive: bool, install: bool, uninstall: bool, 
-         debug: bool, help_extended: bool,
+         debug: bool, help_extended: bool, force_cleanup: bool,
          # DICOM options
          port: Optional[int], aet: Optional[str], start_scp: bool, start_scu: Optional[str], discovery: Optional[str],
          # Migration options
@@ -331,11 +333,17 @@ def main(ctx, config: Optional[str], daemon: bool, interactive: bool, install: b
     if ctx.invoked_subcommand is not None:
         # Subcommand will be invoked
         return
-    
-    # Handle immediate action CLI options that don't require full service startup
-    if any([get_model, list_models, get_trust, get_aggression, query, schema, 
+        
+    # Check for zombie processes (unless running a quick command)
+    is_quick_command = any([get_model, list_models, get_trust, get_aggression, query, schema, 
             get_migration_status, set_trust is not None, set_aggression is not None, 
-            set_model, log, insert_query]):
+            set_model, log, insert_query])
+            
+    if not is_quick_command:
+        # This will prompt user or auto-kill if force_cleanup is True
+        # Passed as kwarg to avoid modifying signature if unrelated changes happen
+        check_and_cleanup_zombies(auto_kill=force_cleanup)
+
         # These options require database access but not full service startup
         load_dotenv()
         settings = get_settings(config_file=config)

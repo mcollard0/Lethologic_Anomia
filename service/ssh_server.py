@@ -253,6 +253,10 @@ class SSHServer:
         if not self.settings.ssh.ssh_enabled:
             logger.info("SSH server is disabled in configuration")
             return False
+            
+        if self.settings.ssh.ssh_port < 1:
+            logger.info("SSH server is disabled because port is < 1")
+            return False
         
         try:
             # Setup host key and authorized keys
