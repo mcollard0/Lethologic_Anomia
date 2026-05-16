@@ -18,12 +18,13 @@ import time
 from pathlib import Path
 
 # Add project root to path
-project_root = Path(__file__).parent
+project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from core.ai_loop import AIService
 from core.config import get_settings
 from core.database import DatabaseManager
+from unittest.mock import MagicMock
 
 async def test_quit_commands():
     """Test quit commands with AI service"""
@@ -48,7 +49,11 @@ async def test_quit_commands():
     await db_manager.initialize()
     
     ai_service = AIService(settings, db_manager)
-    await ai_service.initialize()
+    
+    # Mock the AI model initialization to avoid downloading models in tests
+    ai_service.local_model = MagicMock()
+    ai_service.tokenizer = MagicMock()
+    ai_service.available_providers = ['test']
     
     # Test 1: .q command
     print("\\nTest 1: Testing '.q' command...")

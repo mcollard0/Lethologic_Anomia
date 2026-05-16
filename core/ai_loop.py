@@ -389,19 +389,19 @@ class AIService:
             # Save responses
             responses_json = json.dumps(self.last_responses)
             await self.db_manager.execute_query(
-                "INSERT OR REPLACE INTO config (service, name, value, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                "INSERT OR REPLACE INTO config (service, name, value, value_type, created_at, updated_at) VALUES (?, ?, ?, 'string', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
                 ("LA", "LAST RESPONSES", responses_json)
             )
             
             # Save position
             await self.db_manager.execute_query(
-                "INSERT OR REPLACE INTO config (service, name, value, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                "INSERT OR REPLACE INTO config (service, name, value, value_type, created_at, updated_at) VALUES (?, ?, ?, 'string', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
                 ("LA", "LAST RESPONSE POSITION", str(self.response_position))
             )
             
             # Save trust level
             await self.db_manager.execute_query(
-                "INSERT OR REPLACE INTO config (service, name, value, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                "INSERT OR REPLACE INTO config (service, name, value, value_type, created_at, updated_at) VALUES (?, ?, ?, 'string', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
                 ("LA", "TRUST LEVEL", str(self.trust_level))
             )
             
@@ -428,7 +428,7 @@ class AIService:
         
         # Log the command
         await self.db_manager.execute_query(
-            "INSERT OR REPLACE INTO config (service, name, value, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+            "INSERT OR REPLACE INTO config (service, name, value, value_type, created_at, updated_at) VALUES (?, ?, ?, 'string', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
             ("LA", "LAST COMMAND", user_input)
         )
         
@@ -1506,20 +1506,23 @@ Response:"""
         """
         import re
         
-        # If it's already a proper SQL query, return as-is
-        if query.lower().strip().startswith('select '):
+        query_strip = query.strip()
+        query_lower = query_strip.lower()
+        
+        # If it's already a proper SQL query
+        if query_lower.startswith('select '):
+            if query_lower.startswith('select all '):
+                return 'SELECT * ' + query_strip[11:]
             return query
-        
-        # Try to parse natural language patterns
-        query_lower = query.lower().strip()
-        
-        # Pattern: "select {columns} from {table}"
-        natural_pattern = r'select\s+(.+?)\s+from\s+(\w+)'
-        match = re.search(natural_pattern, query_lower)
+            
+        # Try to parse natural language patterns with optional trailing clauses
+        natural_pattern = re.compile(r'select\s+(.+?)\s+from\s+(\w+)(.*)', re.IGNORECASE)
+        match = natural_pattern.search(query_strip)
         
         if match:
             columns_part = match.group(1).strip()
             table_name = match.group(2).strip()
+            trailing = match.group(3).strip()
             
             # Clean up columns part
             if columns_part == '*' or columns_part == 'all':
@@ -1529,7 +1532,11 @@ Response:"""
                 columns_list = [col.strip() for col in columns_part.split(',')]
                 columns = ', '.join(columns_list)
             
-            return f"SELECT {columns} FROM {table_name}"
+            sql = f"SELECT {columns} FROM {table_name}"
+            if trailing:
+                sql += f" {trailing}"
+            return sql
+        
         
         # If no pattern matches, return original (will likely fail validation)
         return query
@@ -1798,7 +1805,7 @@ The AI will interpret your intent and execute the appropriate actions.
             }
             
             await self.db_manager.execute_query(
-                "INSERT OR REPLACE INTO config (service, name, value, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                "INSERT OR REPLACE INTO config (service, name, value, value_type, created_at, updated_at) VALUES (?, ?, ?, 'string', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
                 ("LA", "LAST_MATH_QUIZ", json.dumps(quiz_data))
             )
             
@@ -1871,7 +1878,7 @@ The AI will interpret your intent and execute the appropriate actions.
             }
             
             await self.db_manager.execute_query(
-                "INSERT OR REPLACE INTO config (service, name, value, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                "INSERT OR REPLACE INTO config (service, name, value, value_type, created_at, updated_at) VALUES (?, ?, ?, 'string', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
                 ("LA", f"INDEX_{directory.replace('/', '_')}", json.dumps(index_data))
             )
             
@@ -2031,7 +2038,7 @@ The AI will interpret your intent and execute the appropriate actions.
             
             # Log the service class start in the database
             await self.db_manager.execute_query(
-                "INSERT OR REPLACE INTO config (service, name, value, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                "INSERT OR REPLACE INTO config (service, name, value, value_type, created_at, updated_at) VALUES (?, ?, ?, 'string', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
                 ("SCP", "SERVICE_CLASS_PROVIDER", json.dumps({
                     'service_class': service_class,
                     'started_at': datetime.now().isoformat(),
@@ -2093,7 +2100,7 @@ The AI will interpret your intent and execute the appropriate actions.
             
             # Save updated statistics
             await self.db_manager.execute_query(
-                "INSERT OR REPLACE INTO config (service, name, value, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                "INSERT OR REPLACE INTO config (service, name, value, value_type, created_at, updated_at) VALUES (?, ?, ?, 'string', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
                 ("LA", "LMAD_STATS", json.dumps(stats))
             )
             
@@ -2251,7 +2258,7 @@ The AI will interpret your intent and execute the appropriate actions.
             
             # Save the question asked for potential follow-up
             await self.db_manager.execute_query(
-                "INSERT OR REPLACE INTO config (service, name, value, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                "INSERT OR REPLACE INTO config (service, name, value, value_type, created_at, updated_at) VALUES (?, ?, ?, 'string', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
                 ("LA", "LAST_REVERSE_TURING", json.dumps({
                     'question': selected,
                     'asked_at': datetime.now().isoformat()
@@ -2384,7 +2391,7 @@ The AI will interpret your intent and execute the appropriate actions.
             # Additional safety checks
             dangerous_patterns = [
                 'drop table', 'truncate', 'alter table', 'create table',
-                'delete from users', 'update users set', 'drop database'
+                'delete from user', 'update user set', 'drop database'
             ]
             
             for pattern in dangerous_patterns:
@@ -2402,7 +2409,7 @@ The AI will interpret your intent and execute the appropriate actions.
             
             # Log the query execution
             await self.db_manager.execute_query(
-                "INSERT OR REPLACE INTO config (service, name, value, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                "INSERT OR REPLACE INTO config (service, name, value, value_type, created_at, updated_at) VALUES (?, ?, ?, 'string', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
                 ("LA", "LAST_INSERT_QUERY", json.dumps({
                     'query': query,
                     'executed_at': datetime.now().isoformat(),
@@ -2442,8 +2449,8 @@ The AI will interpret your intent and execute the appropriate actions.
             
             # Create site record if it doesn't exist
             await self.db_manager.execute_query(
-                "INSERT OR IGNORE INTO sites (sitename, status, created_at, updated_at) VALUES (?, ?, ?, ?)",
-                (sitename, 'active', datetime.now(), datetime.now())
+                "INSERT OR IGNORE INTO site (sitename, status, enabled, deleted, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (sitename, 'active', 1, 0, datetime.now(), datetime.now())
             )
             
             result = []
@@ -2523,7 +2530,7 @@ The AI will interpret your intent and execute the appropriate actions.
             
             # Log the operation
             await self.db_manager.execute_query(
-                "INSERT OR REPLACE INTO config (service, name, value, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                "INSERT OR REPLACE INTO config (service, name, value, value_type, created_at, updated_at) VALUES (?, ?, ?, 'string', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
                 ("LA", "LAST_ADD_COLUMNS", json.dumps({
                     'tablename': tablename,
                     'added_tags': added_columns,
@@ -2616,7 +2623,7 @@ The AI will interpret your intent and execute the appropriate actions.
             new_table_sql = f"CREATE TABLE {tablename}_new ({', '.join(column_definitions)})"
             
             # Execute the table recreation
-            await self.db_manager.execute_query("BEGIN TRANSACTION")
+            # await self.db_manager.execute_query("BEGIN TRANSACTION")
             
             try:
                 # Create new table
@@ -2632,11 +2639,11 @@ The AI will interpret your intent and execute the appropriate actions.
                 await self.db_manager.execute_query(f"ALTER TABLE {tablename}_new RENAME TO {tablename}")
                 
                 # Commit transaction
-                await self.db_manager.execute_query("COMMIT")
+                # await self.db_manager.execute_query("COMMIT")
                 
             except Exception as transaction_error:
                 # Rollback on error
-                await self.db_manager.execute_query("ROLLBACK")
+                # await self.db_manager.execute_query("ROLLBACK")
                 raise transaction_error
             
             # Format results
@@ -2649,7 +2656,7 @@ The AI will interpret your intent and execute the appropriate actions.
             
             # Log the operation
             await self.db_manager.execute_query(
-                "INSERT OR REPLACE INTO config (service, name, value, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                "INSERT OR REPLACE INTO config (service, name, value, value_type, created_at, updated_at) VALUES (?, ?, ?, 'string', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
                 ("LA", "LAST_REMOVE_COLUMNS", json.dumps({
                     'tablename': tablename,
                     'removed_tags': columns_to_remove,

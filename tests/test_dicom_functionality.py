@@ -30,4 +30,770 @@ except ImportError:
 
 try:
     from pynetdicom import AE, evt, build_context
-    from pynetdicom.sop_class import (\n        Verification, CTImageStorage, MRImageStorage, \n        StudyRootQueryRetrieveInformationModelFind,\n        StudyRootQueryRetrieveInformationModelMove,\n        StudyRootQueryRetrieveInformationModelGet\n    )\n    PYNETDICOM_AVAILABLE = True\nexcept ImportError:\n    PYNETDICOM_AVAILABLE = False\n    print(\"ERROR: pynetdicom not available. Install with: pip install pynetdicom\")\n\nfrom core.custom_logging import get_logger\nfrom core.database import DatabaseManager\nfrom core.config import Settings\nfrom service.dicom.scp import DICOMStorageSCP\nfrom service.dicom.scu import DICOMSCU\nfrom service.dicom.search import DICOMSearch\nfrom service.dicom.parser import DICOMFileParser\n\nlogger = get_logger(__name__)\n\n\nclass DICOMTestSuite:\n    \"\"\"\n    Comprehensive DICOM functionality test suite\n    \n    Tests all DICOM operations:\n    - C-ECHO (verification)\n    - C-STORE (storage)\n    - C-FIND (query)\n    - C-MOVE (retrieve) \n    - C-GET (retrieve)\n    - File parsing\n    - Metadata extraction\n    \"\"\"\n    \n    def __init__(self):\n        \"\"\"Initialize DICOM test suite\"\"\"\n        self.temp_dir = None\n        self.test_files = []\n        self.scp_server = None\n        self.scp_thread = None\n        self.test_results = {\n            'total_tests': 0,\n            'passed_tests': 0,\n            'failed_tests': 0,\n            'test_details': []\n        }\n        \n        # Test configuration\n        self.config = {\n            'scp_port': 11113,\n            'scp_ae_title': 'TESTSCP',\n            'scu_ae_title': 'TESTSCU',\n            'timeout': 30\n        }\n        \n        # Initialize database for testing\n        self.db_manager = None\n        self.settings = Settings()\n    \n    async def setup(self) -> bool:\n        \"\"\"\n        Setup test environment\n        \n        Returns:\n            True if setup successful\n        \"\"\"\n        try:\n            logger.info(\"Setting up DICOM test environment...\")\n            \n            # Check dependencies\n            if not PYDICOM_AVAILABLE:\n                logger.error(\"pydicom not available\")\n                return False\n            \n            if not PYNETDICOM_AVAILABLE:\n                logger.error(\"pynetdicom not available\")\n                return False\n            \n            # Create temporary directory\n            self.temp_dir = tempfile.mkdtemp(prefix='dicom_test_')\n            logger.info(f\"Created temp directory: {self.temp_dir}\")\n            \n            # Initialize database\n            self.db_manager = DatabaseManager(self.settings)\n            await self.db_manager.initialize()\n            \n            # Create test DICOM files\n            await self.create_test_dicom_files()\n            \n            # Start test SCP server\n            await self.start_test_scp()\n            \n            logger.info(\"DICOM test environment setup complete\")\n            return True\n            \n        except Exception as e:\n            logger.error(f\"Test setup failed: {e}\")\n            return False\n    \n    async def teardown(self):\n        \"\"\"Cleanup test environment\"\"\"\n        try:\n            logger.info(\"Cleaning up DICOM test environment...\")\n            \n            # Stop SCP server\n            if self.scp_server:\n                self.scp_server.shutdown()\n            \n            if self.scp_thread and self.scp_thread.is_alive():\n                self.scp_thread.join(timeout=10)\n            \n            # Close database\n            if self.db_manager:\n                await self.db_manager.shutdown()\n            \n            # Clean up temp files\n            if self.temp_dir and os.path.exists(self.temp_dir):\n                import shutil\n                shutil.rmtree(self.temp_dir)\n                logger.info(f\"Cleaned up temp directory: {self.temp_dir}\")\n            \n            logger.info(\"DICOM test environment cleanup complete\")\n            \n        except Exception as e:\n            logger.error(f\"Test cleanup failed: {e}\")\n    \n    async def create_test_dicom_files(self):\n        \"\"\"Create test DICOM files for testing\"\"\"\n        try:\n            logger.info(\"Creating test DICOM files...\")\n            \n            # Create test datasets\n            test_datasets = [\n                {\n                    'filename': 'test_ct.dcm',\n                    'modality': 'CT',\n                    'patient_id': 'TEST001',\n                    'patient_name': 'Test^Patient^One',\n                    'study_date': '20240101',\n                    'series_number': '1'\n                },\n                {\n                    'filename': 'test_mri.dcm',\n                    'modality': 'MR',\n                    'patient_id': 'TEST002',\n                    'patient_name': 'Test^Patient^Two',\n                    'study_date': '20240102',\n                    'series_number': '2'\n                },\n                {\n                    'filename': 'test_xray.dcm',\n                    'modality': 'XR',\n                    'patient_id': 'TEST003',\n                    'patient_name': 'Test^Patient^Three',\n                    'study_date': '20240103',\n                    'series_number': '3'\n                }\n            ]\n            \n            for dataset_info in test_datasets:\n                file_path = os.path.join(self.temp_dir, dataset_info['filename'])\n                \n                # Create minimal DICOM dataset\n                ds = Dataset()\n                \n                # Patient Module\n                ds.PatientName = dataset_info['patient_name']\n                ds.PatientID = dataset_info['patient_id']\n                ds.PatientBirthDate = '19800101'\n                ds.PatientSex = 'M'\n                \n                # Study Module\n                ds.StudyInstanceUID = generate_uid()\n                ds.StudyDate = dataset_info['study_date']\n                ds.StudyTime = '120000'\n                ds.StudyID = '1'\n                ds.AccessionNumber = f\"ACC{dataset_info['patient_id']}\"\n                \n                # Series Module\n                ds.SeriesInstanceUID = generate_uid()\n                ds.SeriesNumber = dataset_info['series_number']\n                ds.Modality = dataset_info['modality']\n                ds.SeriesDate = dataset_info['study_date']\n                ds.SeriesTime = '120000'\n                \n                # Image Module\n                ds.SOPInstanceUID = generate_uid()\n                ds.InstanceNumber = '1'\n                \n                # SOP Common Module\n                if dataset_info['modality'] == 'CT':\n                    ds.SOPClassUID = CTImageStorage\n                elif dataset_info['modality'] == 'MR':\n                    ds.SOPClassUID = MRImageStorage\n                else:\n                    ds.SOPClassUID = CTImageStorage  # Default\n                \n                # Image Pixel Module (minimal)\n                ds.SamplesPerPixel = 1\n                ds.PhotometricInterpretation = 'MONOCHROME2'\n                ds.Rows = 512\n                ds.Columns = 512\n                ds.BitsAllocated = 16\n                ds.BitsStored = 16\n                ds.HighBit = 15\n                ds.PixelRepresentation = 0\n                \n                # Create minimal pixel data\n                import numpy as np\n                pixel_array = np.random.randint(0, 4096, (512, 512), dtype=np.uint16)\n                ds.PixelData = pixel_array.tobytes()\n                \n                # File Meta Information\n                file_meta = Dataset()\n                file_meta.MediaStorageSOPClassUID = ds.SOPClassUID\n                file_meta.MediaStorageSOPInstanceUID = ds.SOPInstanceUID\n                file_meta.ImplementationClassUID = generate_uid()\n                file_meta.TransferSyntaxUID = '1.2.840.10008.1.2'  # Implicit VR Little Endian\n                \n                # Create FileDataset\n                file_ds = FileDataset(\n                    file_path, ds, file_meta=file_meta, \n                    preamble=b\"\\0\" * 128, is_implicit_VR=True\n                )\n                \n                # Save DICOM file\n                file_ds.save_as(file_path)\n                self.test_files.append(file_path)\n                \n                logger.info(f\"Created test DICOM file: {dataset_info['filename']}\")\n            \n            logger.info(f\"Created {len(self.test_files)} test DICOM files\")\n            \n        except Exception as e:\n            logger.error(f\"Failed to create test DICOM files: {e}\")\n            raise\n    \n    async def start_test_scp(self):\n        \"\"\"Start test DICOM SCP server\"\"\"\n        try:\n            logger.info(\"Starting test DICOM SCP server...\")\n            \n            # Create SCP server\n            self.scp_server = DICOMStorageSCP(\n                self.db_manager, \n                self.settings,\n                port=self.config['scp_port'],\n                ae_title=self.config['scp_ae_title'],\n                storage_directory=self.temp_dir\n            )\n            \n            # Configure SCP\n            await self.scp_server.configure({\n                'port': self.config['scp_port'],\n                'ae_title': self.config['scp_ae_title'],\n                'storage_directory': self.temp_dir\n            })\n            \n            # Start SCP in separate thread\n            def run_scp():\n                loop = asyncio.new_event_loop()\n                asyncio.set_event_loop(loop)\n                loop.run_until_complete(self.scp_server.start())\n                loop.run_forever()\n            \n            self.scp_thread = threading.Thread(target=run_scp, daemon=True)\n            self.scp_thread.start()\n            \n            # Wait for server to start\n            await asyncio.sleep(2)\n            \n            logger.info(f\"Test SCP server started on port {self.config['scp_port']}\")\n            \n        except Exception as e:\n            logger.error(f\"Failed to start test SCP server: {e}\")\n            raise\n    \n    async def run_all_tests(self) -> Dict[str, Any]:\n        \"\"\"\n        Run all DICOM functionality tests\n        \n        Returns:\n            Test results dictionary\n        \"\"\"\n        try:\n            logger.info(\"Starting DICOM functionality verification...\")\n            \n            # Test 1: DICOM File Parsing\n            await self.test_dicom_file_parsing()\n            \n            # Test 2: C-ECHO (Verification)\n            await self.test_c_echo()\n            \n            # Test 3: C-STORE (Storage)\n            await self.test_c_store()\n            \n            # Test 4: C-FIND (Query)\n            await self.test_c_find()\n            \n            # Test 5: DICOM Search Service\n            await self.test_dicom_search()\n            \n            # Test 6: DICOM Parser Service\n            await self.test_dicom_parser()\n            \n            # Test 7: Database Integration\n            await self.test_database_integration()\n            \n            # Calculate results\n            self.test_results['success_rate'] = (\n                self.test_results['passed_tests'] / self.test_results['total_tests'] * 100\n                if self.test_results['total_tests'] > 0 else 0\n            )\n            \n            logger.info(f\"DICOM verification complete: {self.test_results['passed_tests']}/{self.test_results['total_tests']} tests passed\")\n            return self.test_results\n            \n        except Exception as e:\n            logger.error(f\"DICOM verification failed: {e}\")\n            self.add_test_result(\"Overall Test Suite\", False, str(e))\n            return self.test_results\n    \n    async def test_dicom_file_parsing(self):\n        \"\"\"Test DICOM file parsing functionality\"\"\"\n        test_name = \"DICOM File Parsing\"\n        \n        try:\n            logger.info(f\"Testing {test_name}...\")\n            \n            for test_file in self.test_files:\n                # Test reading DICOM file\n                ds = pydicom.dcmread(test_file)\n                \n                # Verify basic tags\n                assert hasattr(ds, 'PatientID'), \"Missing PatientID\"\n                assert hasattr(ds, 'StudyInstanceUID'), \"Missing StudyInstanceUID\"\n                assert hasattr(ds, 'SeriesInstanceUID'), \"Missing SeriesInstanceUID\"\n                assert hasattr(ds, 'SOPInstanceUID'), \"Missing SOPInstanceUID\"\n                assert hasattr(ds, 'Modality'), \"Missing Modality\"\n                \n                # Test metadata extraction\n                metadata = {\n                    'patient_id': str(ds.PatientID),\n                    'patient_name': str(ds.PatientName),\n                    'study_uid': str(ds.StudyInstanceUID),\n                    'series_uid': str(ds.SeriesInstanceUID),\n                    'instance_uid': str(ds.SOPInstanceUID),\n                    'modality': str(ds.Modality),\n                    'study_date': str(ds.StudyDate)\n                }\n                \n                # Verify pixel data access\n                if hasattr(ds, 'PixelData'):\n                    pixel_array = ds.pixel_array\n                    assert pixel_array is not None, \"Failed to access pixel data\"\n                    assert pixel_array.shape == (512, 512), f\"Unexpected pixel array shape: {pixel_array.shape}\"\n                \n                logger.info(f\"Successfully parsed {os.path.basename(test_file)}\")\n            \n            self.add_test_result(test_name, True, f\"Parsed {len(self.test_files)} DICOM files\")\n            \n        except Exception as e:\n            logger.error(f\"{test_name} failed: {e}\")\n            self.add_test_result(test_name, False, str(e))\n    \n    async def test_c_echo(self):\n        \"\"\"Test C-ECHO (DICOM verification) functionality\"\"\"\n        test_name = \"C-ECHO Verification\"\n        \n        try:\n            logger.info(f\"Testing {test_name}...\")\n            \n            # Create Application Entity\n            ae = AE(ae_title=self.config['scu_ae_title'])\n            ae.add_requested_context(Verification)\n            \n            # Associate with test SCP\n            assoc = ae.associate(\n                'localhost', \n                self.config['scp_port'],\n                ae_title=self.config['scp_ae_title']\n            )\n            \n            if assoc.is_established:\n                # Send C-ECHO\n                status = assoc.send_c_echo()\n                \n                if status:\n                    logger.info(\"C-ECHO successful\")\n                    self.add_test_result(test_name, True, \"ECHO verification successful\")\n                else:\n                    self.add_test_result(test_name, False, \"ECHO request failed\")\n                \n                # Release association\n                assoc.release()\n                \n            else:\n                self.add_test_result(test_name, False, \"Failed to establish association\")\n                \n        except Exception as e:\n            logger.error(f\"{test_name} failed: {e}\")\n            self.add_test_result(test_name, False, str(e))\n    \n    async def test_c_store(self):\n        \"\"\"Test C-STORE (DICOM storage) functionality\"\"\"\n        test_name = \"C-STORE Storage\"\n        \n        try:\n            logger.info(f\"Testing {test_name}...\")\n            \n            stored_count = 0\n            \n            for test_file in self.test_files:\n                # Read DICOM file\n                ds = pydicom.dcmread(test_file)\n                \n                # Create Application Entity\n                ae = AE(ae_title=self.config['scu_ae_title'])\n                ae.add_requested_context(ds.SOPClassUID)\n                \n                # Associate with test SCP\n                assoc = ae.associate(\n                    'localhost',\n                    self.config['scp_port'],\n                    ae_title=self.config['scp_ae_title']\n                )\n                \n                if assoc.is_established:\n                    # Send C-STORE\n                    status = assoc.send_c_store(ds)\n                    \n                    if status:\n                        if status.Status == 0x0000:  # Success\n                            stored_count += 1\n                            logger.info(f\"C-STORE successful for {os.path.basename(test_file)}\")\n                        else:\n                            logger.warning(f\"C-STORE status: 0x{status.Status:04x}\")\n                    \n                    # Release association\n                    assoc.release()\n                    \n                else:\n                    logger.error(f\"Failed to establish association for {test_file}\")\n            \n            if stored_count == len(self.test_files):\n                self.add_test_result(test_name, True, f\"Stored {stored_count} DICOM files\")\n            else:\n                self.add_test_result(test_name, False, f\"Only stored {stored_count}/{len(self.test_files)} files\")\n                \n        except Exception as e:\n            logger.error(f\"{test_name} failed: {e}\")\n            self.add_test_result(test_name, False, str(e))\n    \n    async def test_c_find(self):\n        \"\"\"Test C-FIND (DICOM query) functionality\"\"\"\n        test_name = \"C-FIND Query\"\n        \n        try:\n            logger.info(f\"Testing {test_name}...\")\n            \n            # Create query dataset\n            query_ds = Dataset()\n            query_ds.QueryRetrieveLevel = 'STUDY'\n            query_ds.PatientID = 'TEST*'  # Wildcard search\n            query_ds.StudyInstanceUID = ''\n            query_ds.StudyDate = ''\n            query_ds.StudyDescription = ''\n            query_ds.PatientName = ''\n            \n            # Create Application Entity\n            ae = AE(ae_title=self.config['scu_ae_title'])\n            ae.add_requested_context(StudyRootQueryRetrieveInformationModelFind)\n            \n            # Associate with test SCP\n            assoc = ae.associate(\n                'localhost',\n                self.config['scp_port'],\n                ae_title=self.config['scp_ae_title']\n            )\n            \n            if assoc.is_established:\n                # Send C-FIND\n                responses = assoc.send_c_find(query_ds, StudyRootQueryRetrieveInformationModelFind)\n                \n                found_studies = []\n                for status, identifier in responses:\n                    if status:\n                        if status.Status == 0xFF00:  # Pending\n                            if identifier:\n                                found_studies.append(identifier)\n                        elif status.Status == 0x0000:  # Success\n                            break\n                \n                # Release association\n                assoc.release()\n                \n                if found_studies:\n                    self.add_test_result(test_name, True, f\"Found {len(found_studies)} studies\")\n                    logger.info(f\"C-FIND returned {len(found_studies)} studies\")\n                else:\n                    self.add_test_result(test_name, False, \"No studies found\")\n                    \n            else:\n                self.add_test_result(test_name, False, \"Failed to establish association\")\n                \n        except Exception as e:\n            logger.error(f\"{test_name} failed: {e}\")\n            self.add_test_result(test_name, False, str(e))\n    \n    async def test_dicom_search(self):\n        \"\"\"Test DICOM Search Service\"\"\"\n        test_name = \"DICOM Search Service\"\n        \n        try:\n            logger.info(f\"Testing {test_name}...\")\n            \n            # Create DICOM search service\n            search_service = DICOMSearch(self.db_manager, self.settings)\n            \n            # Configure search service\n            search_config = {\n                'servers': [\n                    {\n                        'name': 'TestSCP',\n                        'ae_title': self.config['scp_ae_title'],\n                        'host': 'localhost',\n                        'port': self.config['scp_port'],\n                        'timeout': 30\n                    }\n                ]\n            }\n            \n            await search_service.configure(search_config)\n            await search_service.start()\n            \n            # Perform search\n            search_criteria = {\n                'patient_id': 'TEST*',\n                'study_date_from': '20240101',\n                'study_date_to': '20240103',\n                'modality': '*'\n            }\n            \n            search_id = await search_service.search_studies(\n                ['TestSCP'], search_criteria\n            )\n            \n            # Wait for search to complete\n            await asyncio.sleep(5)\n            \n            # Check search results\n            results = await search_service.get_search_results(search_id)\n            \n            await search_service.stop()\n            \n            if results and len(results) > 0:\n                self.add_test_result(test_name, True, f\"Search found {len(results)} studies\")\n                logger.info(f\"DICOM search found {len(results)} studies\")\n            else:\n                self.add_test_result(test_name, False, \"Search returned no results\")\n                \n        except Exception as e:\n            logger.error(f\"{test_name} failed: {e}\")\n            self.add_test_result(test_name, False, str(e))\n    \n    async def test_dicom_parser(self):\n        \"\"\"Test DICOM Parser Service\"\"\"\n        test_name = \"DICOM Parser Service\"\n        \n        try:\n            logger.info(f\"Testing {test_name}...\")\n            \n            # Create DICOM parser service\n            parser_service = DICOMFileParser(self.db_manager, self.settings)\n            \n            await parser_service.configure({})\n            await parser_service.start()\n            \n            # Parse test directory\n            parse_id = await parser_service.parse_directory(self.temp_dir)\n            \n            # Wait for parsing to complete\n            await asyncio.sleep(5)\n            \n            # Check parsing results\n            results = await parser_service.get_parsing_results(parse_id)\n            \n            await parser_service.stop()\n            \n            if results and results.get('success', False):\n                parsed_count = results.get('files_processed', 0)\n                self.add_test_result(test_name, True, f\"Parsed {parsed_count} DICOM files\")\n                logger.info(f\"DICOM parser processed {parsed_count} files\")\n            else:\n                error_msg = results.get('error', 'Unknown error') if results else 'No results'\n                self.add_test_result(test_name, False, error_msg)\n                \n        except Exception as e:\n            logger.error(f\"{test_name} failed: {e}\")\n            self.add_test_result(test_name, False, str(e))\n    \n    async def test_database_integration(self):\n        \"\"\"Test DICOM database integration\"\"\"\n        test_name = \"Database Integration\"\n        \n        try:\n            logger.info(f\"Testing {test_name}...\")\n            \n            # Test inserting DICOM metadata\n            for test_file in self.test_files:\n                ds = pydicom.dcmread(test_file)\n                \n                # Insert study\n                await self.db_manager.execute_query(\n                    \"\"\"\n                    INSERT OR REPLACE INTO studies \n                    (study_uid, patient_id, patient_name, study_date, modality, study_description)\n                    VALUES (?, ?, ?, ?, ?, ?)\n                    \"\"\",\n                    [\n                        str(ds.StudyInstanceUID),\n                        str(ds.PatientID),\n                        str(ds.PatientName),\n                        str(ds.StudyDate),\n                        str(ds.Modality),\n                        'Test Study'\n                    ]\n                )\n                \n                # Insert series\n                await self.db_manager.execute_query(\n                    \"\"\"\n                    INSERT OR REPLACE INTO series\n                    (series_uid, study_uid, series_number, modality, series_description)\n                    VALUES (?, ?, ?, ?, ?)\n                    \"\"\",\n                    [\n                        str(ds.SeriesInstanceUID),\n                        str(ds.StudyInstanceUID),\n                        str(ds.SeriesNumber),\n                        str(ds.Modality),\n                        'Test Series'\n                    ]\n                )\n                \n                # Insert image\n                await self.db_manager.execute_query(\n                    \"\"\"\n                    INSERT OR REPLACE INTO images\n                    (sop_instance_uid, series_uid, instance_number, file_path)\n                    VALUES (?, ?, ?, ?)\n                    \"\"\",\n                    [\n                        str(ds.SOPInstanceUID),\n                        str(ds.SeriesInstanceUID),\n                        str(ds.InstanceNumber),\n                        test_file\n                    ]\n                )\n            \n            # Query inserted data\n            studies = await self.db_manager.execute_query(\n                \"SELECT COUNT(*) as count FROM studies WHERE patient_id LIKE 'TEST%'\"\n            )\n            \n            study_count = studies[0]['count'] if studies else 0\n            \n            if study_count == len(self.test_files):\n                self.add_test_result(test_name, True, f\"Database contains {study_count} test studies\")\n                logger.info(f\"Database integration successful: {study_count} studies\")\n            else:\n                self.add_test_result(test_name, False, f\"Expected {len(self.test_files)} studies, found {study_count}\")\n                \n        except Exception as e:\n            logger.error(f\"{test_name} failed: {e}\")\n            self.add_test_result(test_name, False, str(e))\n    \n    def add_test_result(self, test_name: str, passed: bool, details: str):\n        \"\"\"Add test result\"\"\"\n        self.test_results['total_tests'] += 1\n        \n        if passed:\n            self.test_results['passed_tests'] += 1\n            status = \"PASSED\"\n        else:\n            self.test_results['failed_tests'] += 1\n            status = \"FAILED\"\n        \n        result = {\n            'test_name': test_name,\n            'status': status,\n            'passed': passed,\n            'details': details,\n            'timestamp': datetime.now().isoformat()\n        }\n        \n        self.test_results['test_details'].append(result)\n        logger.info(f\"TEST {status}: {test_name} - {details}\")\n    \n    def print_test_summary(self):\n        \"\"\"Print test results summary\"\"\"\n        print(\"\\n\" + \"=\" * 60)\n        print(\"DICOM FUNCTIONALITY VERIFICATION RESULTS\")\n        print(\"=\" * 60)\n        \n        print(f\"\\nTotal Tests: {self.test_results['total_tests']}\")\n        print(f\"Passed: {self.test_results['passed_tests']}\")\n        print(f\"Failed: {self.test_results['failed_tests']}\")\n        print(f\"Success Rate: {self.test_results.get('success_rate', 0):.1f}%\")\n        \n        print(\"\\nDetailed Results:\")\n        print(\"-\" * 40)\n        \n        for result in self.test_results['test_details']:\n            status_symbol = \"✓\" if result['passed'] else \"✗\"\n            print(f\"{status_symbol} {result['test_name']}: {result['details']}\")\n        \n        print(\"\\n\" + \"=\" * 60)\n        \n        # Overall assessment\n        if self.test_results['failed_tests'] == 0:\n            print(\"🎉 ALL DICOM TESTS PASSED! DICOM functionality is working correctly.\")\n        else:\n            print(f\"⚠️  {self.test_results['failed_tests']} tests failed. Review issues above.\")\n        \n        print(\"=\" * 60)\n\n\nasync def main():\n    \"\"\"Main test function\"\"\"\n    test_suite = DICOMTestSuite()\n    \n    try:\n        # Setup test environment\n        if not await test_suite.setup():\n            print(\"❌ Test setup failed\")\n            return False\n        \n        # Run all tests\n        results = await test_suite.run_all_tests()\n        \n        # Print summary\n        test_suite.print_test_summary()\n        \n        return results['failed_tests'] == 0\n        \n    except KeyboardInterrupt:\n        print(\"\\n❌ Tests interrupted by user\")\n        return False\n        \n    except Exception as e:\n        print(f\"❌ Test suite failed: {e}\")\n        return False\n        \n    finally:\n        # Cleanup\n        await test_suite.teardown()\n\n\nif __name__ == '__main__':\n    print(\"🔬 DICOM Functionality Verification\")\n    print(\"Testing all DICOM operations...\\n\")\n    \n    # Run tests\n    success = asyncio.run(main())\n    \n    # Exit with appropriate code\n    sys.exit(0 if success else 1)
+    from pynetdicom.sop_class import (
+        Verification, CTImageStorage, MRImageStorage, 
+        StudyRootQueryRetrieveInformationModelFind,
+        StudyRootQueryRetrieveInformationModelMove,
+        StudyRootQueryRetrieveInformationModelGet
+    )
+    PYNETDICOM_AVAILABLE = True
+except ImportError:
+    PYNETDICOM_AVAILABLE = False
+    print("ERROR: pynetdicom not available. Install with: pip install pynetdicom")
+
+from core.custom_logging import get_logger
+from core.database import DatabaseManager
+from core.config import Settings
+from service.dicom.scp import DICOMSCPService
+from service.dicom.scu import DICOMSCUService
+from service.dicom.search import DICOMSearchService
+from service.dicom.parser import DICOMParserService
+
+logger = get_logger(__name__)
+
+
+class DICOMTestSuite:
+    """
+    Comprehensive DICOM functionality test suite
+    
+    Tests all DICOM operations:
+    - C-ECHO (verification)
+    - C-STORE (storage)
+    - C-FIND (query)
+    - C-MOVE (retrieve) 
+    - C-GET (retrieve)
+    - File parsing
+    - Metadata extraction
+    """
+    
+    def __init__(self):
+        """Initialize DICOM test suite"""
+        self.temp_dir = None
+        self.test_files = []
+        self.scp_server = None
+        self.scp_thread = None
+        self.test_results = {
+            'total_tests': 0,
+            'passed_tests': 0,
+            'failed_tests': 0,
+            'test_details': []
+        }
+        
+        # Test configuration
+        self.config = {
+            'scp_port': 11113,
+            'scp_ae_title': 'TESTSCP',
+            'scu_ae_title': 'TESTSCU',
+            'timeout': 30
+        }
+        
+        # Initialize database for testing
+        self.db_manager = None
+        self.settings = Settings()
+    
+    async def setup(self) -> bool:
+        """
+        Setup test environment
+        
+        Returns:
+            True if setup successful
+        """
+        try:
+            logger.info("Setting up DICOM test environment...")
+            
+            # Check dependencies
+            if not PYDICOM_AVAILABLE:
+                logger.error("pydicom not available")
+                return False
+            
+            if not PYNETDICOM_AVAILABLE:
+                logger.error("pynetdicom not available")
+                return False
+            
+            # Create temporary directory
+            self.temp_dir = tempfile.mkdtemp(prefix='dicom_test_')
+            logger.info(f"Created temp directory: {self.temp_dir}")
+            
+            # Initialize database
+            self.db_manager = DatabaseManager(self.settings)
+            await self.db_manager.initialize()
+            
+            # Create test DICOM files
+            await self.create_test_dicom_files()
+            
+            # Start test SCP server
+            await self.start_test_scp()
+            
+            logger.info("DICOM test environment setup complete")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Test setup failed: {e}")
+            return False
+    
+    async def teardown(self):
+        """Cleanup test environment"""
+        try:
+            logger.info("Cleaning up DICOM test environment...")
+            
+            # Stop SCP server
+            if self.scp_server:
+                self.scp_server.shutdown()
+            
+            if self.scp_thread and self.scp_thread.is_alive():
+                self.scp_thread.join(timeout=10)
+            
+            # Close database
+            if self.db_manager:
+                await self.db_manager.shutdown()
+            
+            # Clean up temp files
+            if self.temp_dir and os.path.exists(self.temp_dir):
+                import shutil
+                shutil.rmtree(self.temp_dir)
+                logger.info(f"Cleaned up temp directory: {self.temp_dir}")
+            
+            logger.info("DICOM test environment cleanup complete")
+            
+        except Exception as e:
+            logger.error(f"Test cleanup failed: {e}")
+    
+    async def create_test_dicom_files(self):
+        """Create test DICOM files for testing"""
+        try:
+            logger.info("Creating test DICOM files...")
+            
+            # Create test datasets
+            test_datasets = [
+                {
+                    'filename': 'test_ct.dcm',
+                    'modality': 'CT',
+                    'patient_id': 'TEST001',
+                    'patient_name': 'Test^Patient^One',
+                    'study_date': '20240101',
+                    'series_number': '1'
+                },
+                {
+                    'filename': 'test_mri.dcm',
+                    'modality': 'MR',
+                    'patient_id': 'TEST002',
+                    'patient_name': 'Test^Patient^Two',
+                    'study_date': '20240102',
+                    'series_number': '2'
+                },
+                {
+                    'filename': 'test_xray.dcm',
+                    'modality': 'XR',
+                    'patient_id': 'TEST003',
+                    'patient_name': 'Test^Patient^Three',
+                    'study_date': '20240103',
+                    'series_number': '3'
+                }
+            ]
+            
+            for dataset_info in test_datasets:
+                file_path = os.path.join(self.temp_dir, dataset_info['filename'])
+                
+                # Create minimal DICOM dataset
+                ds = Dataset()
+                
+                # Patient Module
+                ds.PatientName = dataset_info['patient_name']
+                ds.PatientID = dataset_info['patient_id']
+                ds.PatientBirthDate = '19800101'
+                ds.PatientSex = 'M'
+                
+                # Study Module
+                ds.StudyInstanceUID = generate_uid()
+                ds.StudyDate = dataset_info['study_date']
+                ds.StudyTime = '120000'
+                ds.StudyID = '1'
+                ds.AccessionNumber = f"ACC{dataset_info['patient_id']}"
+                
+                # Series Module
+                ds.SeriesInstanceUID = generate_uid()
+                ds.SeriesNumber = dataset_info['series_number']
+                ds.Modality = dataset_info['modality']
+                ds.SeriesDate = dataset_info['study_date']
+                ds.SeriesTime = '120000'
+                
+                # Image Module
+                ds.SOPInstanceUID = generate_uid()
+                ds.InstanceNumber = '1'
+                
+                # SOP Common Module
+                if dataset_info['modality'] == 'CT':
+                    ds.SOPClassUID = CTImageStorage
+                elif dataset_info['modality'] == 'MR':
+                    ds.SOPClassUID = MRImageStorage
+                else:
+                    ds.SOPClassUID = CTImageStorage  # Default
+                
+                # Image Pixel Module (minimal)
+                ds.SamplesPerPixel = 1
+                ds.PhotometricInterpretation = 'MONOCHROME2'
+                ds.Rows = 512
+                ds.Columns = 512
+                ds.BitsAllocated = 16
+                ds.BitsStored = 16
+                ds.HighBit = 15
+                ds.PixelRepresentation = 0
+                
+                # Create minimal pixel data
+                import numpy as np
+                pixel_array = np.random.randint(0, 4096, (512, 512), dtype=np.uint16)
+                ds.PixelData = pixel_array.tobytes()
+                
+                # File Meta Information
+                file_meta = Dataset()
+                file_meta.MediaStorageSOPClassUID = ds.SOPClassUID
+                file_meta.MediaStorageSOPInstanceUID = ds.SOPInstanceUID
+                file_meta.ImplementationClassUID = generate_uid()
+                file_meta.TransferSyntaxUID = '1.2.840.10008.1.2'  # Implicit VR Little Endian
+                
+                # Create FileDataset
+                file_ds = FileDataset(
+                    file_path, ds, file_meta=file_meta, 
+                    preamble=b"\0" * 128, is_implicit_VR=True
+                )
+                
+                # Save DICOM file
+                file_ds.save_as(file_path)
+                self.test_files.append(file_path)
+                
+                logger.info(f"Created test DICOM file: {dataset_info['filename']}")
+            
+            logger.info(f"Created {len(self.test_files)} test DICOM files")
+            
+        except Exception as e:
+            logger.error(f"Failed to create test DICOM files: {e}")
+            raise
+    
+    async def start_test_scp(self):
+        """Start test DICOM SCP server"""
+        try:
+            logger.info("Starting test DICOM SCP server...")
+            
+            # Create SCP server
+            self.scp_server = DICOMSCPService(
+                self.db_manager, 
+                self.settings
+            )
+            
+            # Configure SCP
+            await self.scp_server.configure({
+                'port': self.config['scp_port'],
+                'ae_title': self.config['scp_ae_title'],
+                'storage_directory': self.temp_dir
+            })
+            
+            # Start SCP in separate thread
+            def run_scp():
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(self.scp_server.start())
+                loop.run_forever()
+            
+            self.scp_thread = threading.Thread(target=run_scp, daemon=True)
+            self.scp_thread.start()
+            
+            # Wait for server to start
+            await asyncio.sleep(2)
+            
+            logger.info(f"Test SCP server started on port {self.config['scp_port']}")
+            
+        except Exception as e:
+            logger.error(f"Failed to start test SCP server: {e}")
+            raise
+    
+    async def run_all_tests(self) -> Dict[str, Any]:
+        """
+        Run all DICOM functionality tests
+        
+        Returns:
+            Test results dictionary
+        """
+        try:
+            logger.info("Starting DICOM functionality verification...")
+            
+            # Test 1: DICOM File Parsing
+            await self.test_dicom_file_parsing()
+            
+            # Test 2: C-ECHO (Verification)
+            await self.test_c_echo()
+            
+            # Test 3: C-STORE (Storage)
+            await self.test_c_store()
+            
+            # Test 4: C-FIND (Query)
+            await self.test_c_find()
+            
+            # Test 5: DICOM Search Service
+            await self.test_dicom_search()
+            
+            # Test 6: DICOM Parser Service
+            await self.test_dicom_parser()
+            
+            # Test 7: Database Integration
+            await self.test_database_integration()
+            
+            # Calculate results
+            self.test_results['success_rate'] = (
+                self.test_results['passed_tests'] / self.test_results['total_tests'] * 100
+                if self.test_results['total_tests'] > 0 else 0
+            )
+            
+            logger.info(f"DICOM verification complete: {self.test_results['passed_tests']}/{self.test_results['total_tests']} tests passed")
+            return self.test_results
+            
+        except Exception as e:
+            logger.error(f"DICOM verification failed: {e}")
+            self.add_test_result("Overall Test Suite", False, str(e))
+            return self.test_results
+    
+    async def test_dicom_file_parsing(self):
+        """Test DICOM file parsing functionality"""
+        test_name = "DICOM File Parsing"
+        
+        try:
+            logger.info(f"Testing {test_name}...")
+            
+            for test_file in self.test_files:
+                # Test reading DICOM file
+                ds = pydicom.dcmread(test_file)
+                
+                # Verify basic tags
+                assert hasattr(ds, 'PatientID'), "Missing PatientID"
+                assert hasattr(ds, 'StudyInstanceUID'), "Missing StudyInstanceUID"
+                assert hasattr(ds, 'SeriesInstanceUID'), "Missing SeriesInstanceUID"
+                assert hasattr(ds, 'SOPInstanceUID'), "Missing SOPInstanceUID"
+                assert hasattr(ds, 'Modality'), "Missing Modality"
+                
+                # Test metadata extraction
+                metadata = {
+                    'patient_id': str(ds.PatientID),
+                    'patient_name': str(ds.PatientName),
+                    'study_uid': str(ds.StudyInstanceUID),
+                    'series_uid': str(ds.SeriesInstanceUID),
+                    'instance_uid': str(ds.SOPInstanceUID),
+                    'modality': str(ds.Modality),
+                    'study_date': str(ds.StudyDate)
+                }
+                
+                # Verify pixel data access
+                if hasattr(ds, 'PixelData'):
+                    pixel_array = ds.pixel_array
+                    assert pixel_array is not None, "Failed to access pixel data"
+                    assert pixel_array.shape == (512, 512), f"Unexpected pixel array shape: {pixel_array.shape}"
+                
+                logger.info(f"Successfully parsed {os.path.basename(test_file)}")
+            
+            self.add_test_result(test_name, True, f"Parsed {len(self.test_files)} DICOM files")
+            
+        except Exception as e:
+            logger.error(f"{test_name} failed: {e}")
+            self.add_test_result(test_name, False, str(e))
+    
+    async def test_c_echo(self):
+        """Test C-ECHO (DICOM verification) functionality"""
+        test_name = "C-ECHO Verification"
+        
+        try:
+            logger.info(f"Testing {test_name}...")
+            
+            # Create Application Entity
+            ae = AE(ae_title=self.config['scu_ae_title'])
+            ae.add_requested_context(Verification)
+            
+            # Associate with test SCP
+            assoc = ae.associate(
+                'localhost', 
+                self.config['scp_port'],
+                ae_title=self.config['scp_ae_title']
+            )
+            
+            if assoc.is_established:
+                # Send C-ECHO
+                status = assoc.send_c_echo()
+                
+                if status:
+                    logger.info("C-ECHO successful")
+                    self.add_test_result(test_name, True, "ECHO verification successful")
+                else:
+                    self.add_test_result(test_name, False, "ECHO request failed")
+                
+                # Release association
+                assoc.release()
+                
+            else:
+                self.add_test_result(test_name, False, "Failed to establish association")
+                
+        except Exception as e:
+            logger.error(f"{test_name} failed: {e}")
+            self.add_test_result(test_name, False, str(e))
+    
+    async def test_c_store(self):
+        """Test C-STORE (DICOM storage) functionality"""
+        test_name = "C-STORE Storage"
+        
+        try:
+            logger.info(f"Testing {test_name}...")
+            
+            stored_count = 0
+            
+            for test_file in self.test_files:
+                # Read DICOM file
+                ds = pydicom.dcmread(test_file)
+                
+                # Create Application Entity
+                ae = AE(ae_title=self.config['scu_ae_title'])
+                ae.add_requested_context(ds.SOPClassUID)
+                
+                # Associate with test SCP
+                assoc = ae.associate(
+                    'localhost',
+                    self.config['scp_port'],
+                    ae_title=self.config['scp_ae_title']
+                )
+                
+                if assoc.is_established:
+                    # Send C-STORE
+                    status = assoc.send_c_store(ds)
+                    
+                    if status:
+                        if status.Status == 0x0000:  # Success
+                            stored_count += 1
+                            logger.info(f"C-STORE successful for {os.path.basename(test_file)}")
+                        else:
+                            logger.warning(f"C-STORE status: 0x{status.Status:04x}")
+                    
+                    # Release association
+                    assoc.release()
+                    
+                else:
+                    logger.error(f"Failed to establish association for {test_file}")
+            
+            if stored_count == len(self.test_files):
+                self.add_test_result(test_name, True, f"Stored {stored_count} DICOM files")
+            else:
+                self.add_test_result(test_name, False, f"Only stored {stored_count}/{len(self.test_files)} files")
+                
+        except Exception as e:
+            logger.error(f"{test_name} failed: {e}")
+            self.add_test_result(test_name, False, str(e))
+    
+    async def test_c_find(self):
+        """Test C-FIND (DICOM query) functionality"""
+        test_name = "C-FIND Query"
+        
+        try:
+            logger.info(f"Testing {test_name}...")
+            
+            # Create query dataset
+            query_ds = Dataset()
+            query_ds.QueryRetrieveLevel = 'STUDY'
+            query_ds.PatientID = 'TEST*'  # Wildcard search
+            query_ds.StudyInstanceUID = ''
+            query_ds.StudyDate = ''
+            query_ds.StudyDescription = ''
+            query_ds.PatientName = ''
+            
+            # Create Application Entity
+            ae = AE(ae_title=self.config['scu_ae_title'])
+            ae.add_requested_context(StudyRootQueryRetrieveInformationModelFind)
+            
+            # Associate with test SCP
+            assoc = ae.associate(
+                'localhost',
+                self.config['scp_port'],
+                ae_title=self.config['scp_ae_title']
+            )
+            
+            if assoc.is_established:
+                # Send C-FIND
+                responses = assoc.send_c_find(query_ds, StudyRootQueryRetrieveInformationModelFind)
+                
+                found_studies = []
+                for status, identifier in responses:
+                    if status:
+                        if status.Status == 0xFF00:  # Pending
+                            if identifier:
+                                found_studies.append(identifier)
+                        elif status.Status == 0x0000:  # Success
+                            break
+                
+                # Release association
+                assoc.release()
+                
+                if found_studies:
+                    self.add_test_result(test_name, True, f"Found {len(found_studies)} studies")
+                    logger.info(f"C-FIND returned {len(found_studies)} studies")
+                else:
+                    self.add_test_result(test_name, False, "No studies found")
+                    
+            else:
+                self.add_test_result(test_name, False, "Failed to establish association")
+                
+        except Exception as e:
+            logger.error(f"{test_name} failed: {e}")
+            self.add_test_result(test_name, False, str(e))
+    
+    async def test_dicom_search(self):
+        """Test DICOM Search Service"""
+        test_name = "DICOM Search Service"
+        
+        try:
+            logger.info(f"Testing {test_name}...")
+            
+            # Create DICOM search service
+            search_service = DICOMSearchService(self.db_manager, self.settings)
+            
+            # Configure search service
+            search_config = {
+                'servers': [
+                    {
+                        'name': 'TestSCP',
+                        'ae_title': self.config['scp_ae_title'],
+                        'host': 'localhost',
+                        'port': self.config['scp_port'],
+                        'timeout': 30
+                    }
+                ]
+            }
+            
+            await search_service.configure(search_config)
+            await search_service.start()
+            
+            # Perform search
+            search_criteria = {
+                'patient_id': 'TEST*',
+                'study_date_from': '20240101',
+                'study_date_to': '20240103',
+                'modality': '*'
+            }
+            
+            search_id = await search_service.search_studies(
+                ['TestSCP'], search_criteria
+            )
+            
+            # Wait for search to complete
+            await asyncio.sleep(5)
+            
+            # Check search results
+            results = await search_service.get_search_results(search_id)
+            
+            await search_service.stop()
+            
+            if results and len(results) > 0:
+                self.add_test_result(test_name, True, f"Search found {len(results)} studies")
+                logger.info(f"DICOM search found {len(results)} studies")
+            else:
+                self.add_test_result(test_name, False, "Search returned no results")
+                
+        except Exception as e:
+            logger.error(f"{test_name} failed: {e}")
+            self.add_test_result(test_name, False, str(e))
+    
+    async def test_dicom_parser(self):
+        """Test DICOM Parser Service"""
+        test_name = "DICOM Parser Service"
+        
+        try:
+            logger.info(f"Testing {test_name}...")
+            
+            # Create DICOM parser service
+            parser_service = DICOMParserService(self.db_manager, self.settings)
+            
+            await parser_service.configure({})
+            await parser_service.start()
+            
+            # Parse test directory
+            parse_id = await parser_service.parse_directory(self.temp_dir)
+            
+            # Wait for parsing to complete
+            await asyncio.sleep(5)
+            
+            # Check parsing results
+            results = await parser_service.get_parsing_results(parse_id)
+            
+            await parser_service.stop()
+            
+            if results and results.get('success', False):
+                parsed_count = results.get('files_processed', 0)
+                self.add_test_result(test_name, True, f"Parsed {parsed_count} DICOM files")
+                logger.info(f"DICOM parser processed {parsed_count} files")
+            else:
+                error_msg = results.get('error', 'Unknown error') if results else 'No results'
+                self.add_test_result(test_name, False, error_msg)
+                
+        except Exception as e:
+            logger.error(f"{test_name} failed: {e}")
+            self.add_test_result(test_name, False, str(e))
+    
+    async def test_database_integration(self):
+        """Test DICOM database integration"""
+        test_name = "Database Integration"
+        
+        try:
+            logger.info(f"Testing {test_name}...")
+            
+            # Test inserting DICOM metadata
+            for test_file in self.test_files:
+                ds = pydicom.dcmread(test_file)
+                
+                # Insert study
+                await self.db_manager.execute_query(
+                    """
+                    INSERT OR REPLACE INTO studies 
+                    (study_uid, patient_id, patient_name, study_date, modality, study_description)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        str(ds.StudyInstanceUID),
+                        str(ds.PatientID),
+                        str(ds.PatientName),
+                        str(ds.StudyDate),
+                        str(ds.Modality),
+                        'Test Study'
+                    ]
+                )
+                
+                # Insert series
+                await self.db_manager.execute_query(
+                    """
+                    INSERT OR REPLACE INTO series
+                    (series_uid, study_uid, series_number, modality, series_description)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    [
+                        str(ds.SeriesInstanceUID),
+                        str(ds.StudyInstanceUID),
+                        str(ds.SeriesNumber),
+                        str(ds.Modality),
+                        'Test Series'
+                    ]
+                )
+                
+                # Insert image
+                await self.db_manager.execute_query(
+                    """
+                    INSERT OR REPLACE INTO images
+                    (sop_instance_uid, series_uid, instance_number, file_path)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    [
+                        str(ds.SOPInstanceUID),
+                        str(ds.SeriesInstanceUID),
+                        str(ds.InstanceNumber),
+                        test_file
+                    ]
+                )
+            
+            # Query inserted data
+            studies = await self.db_manager.execute_query(
+                "SELECT COUNT(*) as count FROM studies WHERE patient_id LIKE 'TEST%'"
+            )
+            
+            study_count = studies[0]['count'] if studies else 0
+            
+            if study_count == len(self.test_files):
+                self.add_test_result(test_name, True, f"Database contains {study_count} test studies")
+                logger.info(f"Database integration successful: {study_count} studies")
+            else:
+                self.add_test_result(test_name, False, f"Expected {len(self.test_files)} studies, found {study_count}")
+                
+        except Exception as e:
+            logger.error(f"{test_name} failed: {e}")
+            self.add_test_result(test_name, False, str(e))
+    
+    def add_test_result(self, test_name: str, passed: bool, details: str):
+        """Add test result"""
+        self.test_results['total_tests'] += 1
+        
+        if passed:
+            self.test_results['passed_tests'] += 1
+            status = "PASSED"
+        else:
+            self.test_results['failed_tests'] += 1
+            status = "FAILED"
+        
+        result = {
+            'test_name': test_name,
+            'status': status,
+            'passed': passed,
+            'details': details,
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        self.test_results['test_details'].append(result)
+        logger.info(f"TEST {status}: {test_name} - {details}")
+    
+    def print_test_summary(self):
+        """Print test results summary"""
+        print("\n" + "=" * 60)
+        print("DICOM FUNCTIONALITY VERIFICATION RESULTS")
+        print("=" * 60)
+        
+        print(f"\nTotal Tests: {self.test_results['total_tests']}")
+        print(f"Passed: {self.test_results['passed_tests']}")
+        print(f"Failed: {self.test_results['failed_tests']}")
+        print(f"Success Rate: {self.test_results.get('success_rate', 0):.1f}%")
+        
+        print("\nDetailed Results:")
+        print("-" * 40)
+        
+        for result in self.test_results['test_details']:
+            status_symbol = "â" if result['passed'] else "â"
+            print(f"{status_symbol} {result['test_name']}: {result['details']}")
+        
+        print("\n" + "=" * 60)
+        
+        # Overall assessment
+        if self.test_results['failed_tests'] == 0:
+            print("ð ALL DICOM TESTS PASSED! DICOM functionality is working correctly.")
+        else:
+            print(f"â ï¸  {self.test_results['failed_tests']} tests failed. Review issues above.")
+        
+        print("=" * 60)
+
+
+async def main():
+    """Main test function"""
+    test_suite = DICOMTestSuite()
+    
+    try:
+        # Setup test environment
+        if not await test_suite.setup():
+            print("â Test setup failed")
+            return False
+        
+        # Run all tests
+        results = await test_suite.run_all_tests()
+        
+        # Print summary
+        test_suite.print_test_summary()
+        
+        return results['failed_tests'] == 0
+        
+    except KeyboardInterrupt:
+        print("\nâ Tests interrupted by user")
+        return False
+        
+    except Exception as e:
+        print(f"â Test suite failed: {e}")
+        return False
+        
+    finally:
+        # Cleanup
+        await test_suite.teardown()
+
+
+if __name__ == '__main__':
+    print("ð¬ DICOM Functionality Verification")
+    print("Testing all DICOM operations...\n")
+    
+    # Run tests
+    success = asyncio.run(main())
+    
+    # Exit with appropriate code
+    sys.exit(0 if success else 1)
