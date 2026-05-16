@@ -38,12 +38,13 @@ from rich.text import Text
 
 # Import our DICOM services
 import sys
-sys.path.append('/mnt/4f79e4ad-b75d-46a5-af16-ca1bd092ce07/Archive/Lethologic Anomia')
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
 
 from service.dicom.discovery import DICOMDiscoveryService
-# from service.dicom.ssl_manager import DICOMSSLManager
+from core.ssl_manager import SSLManager as DICOMSSLManager
 from core.database import DatabaseManager
-from core.config import Settings
+from core.config import Settings, get_settings
 from core.custom_logging import get_logger
 
 logger = get_logger(__name__)
@@ -82,7 +83,7 @@ class ComprehensiveDICOMTestSuite:
         # Initialize services
         self.db_manager = None
         self.discovery_service = None
-        # self.ssl_manager = DICOMSSLManager()
+        self.ssl_manager = DICOMSSLManager()
         
         # AE for testing
         self.test_ae = AE(ae_title='TEST_SCU')
@@ -94,8 +95,8 @@ class ComprehensiveDICOMTestSuite:
         """Setup required services for testing"""
         try:
             # Initialize database and discovery service
-            settings = Settings()
-            self.db_manager = DatabaseManager(settings)
+            settings = get_settings()
+            self.db_manager = DatabaseManager(settings.database_url)
             await self.db_manager.initialize()
             
             self.discovery_service = DICOMDiscoveryService(self.db_manager, settings)
@@ -575,71 +576,69 @@ class ComprehensiveDICOMTestSuite:
     
     async def test_ssl_functionality(self) -> bool:
         """Test SSL certificate generation and validation"""
-        console.print("\n[bold blue]Testing SSL Functionality (SKIPPED - Module Not Found)[/bold blue]")
-        return True
-        # all_passed = True
-        # 
-        # start_time = time.time()
-        # 
-        # try:
-        #     # Test certificate generation
-        #     cert_info = self.ssl_manager.generate_certificate_pair(
-        #         common_name='test.lethologic.local',
-        #         key_size=2048
-        #     )
-        #     
-        #     duration = time.time() - start_time
-        #     
-        #     if cert_info and cert_info.get('success'):
-        #         self.record_test_result(
-        #             "SSL Certificate Generation",
-        #             True,
-        #             f"Generated certificate with CN: {cert_info.get('common_name')}",
-        #             duration
-        #         )
-        #         
-        #         # Test certificate validation
-        #         validation_start = time.time()
-        #         
-        #         is_valid = self.ssl_manager.validate_certificate_pair()
-        #         validation_duration = time.time() - validation_start
-        #         
-        #         if is_valid:
-        #             self.record_test_result(
-        #                 "SSL Certificate Validation",
-        #                 True,
-        #                 "Certificate pair validated successfully",
-        #                 validation_duration
-        #             )
-        #         else:
-        #             self.record_test_result(
-        #                 "SSL Certificate Validation",
-        #                 False,
-        #                 "Certificate validation failed",
-        #                 validation_duration
-        #             )
-        #             all_passed = False
-        #             
-        #     else:
-        #         self.record_test_result(
-        #             "SSL Certificate Generation",
-        #             False,
-        #             f"Certificate generation failed: {cert_info.get('error', 'Unknown error')}",
-        #             duration
-        #         )
-        #         all_passed = False
-        #         
-        # except Exception as e:
-        #     duration = time.time() - start_time
-        #     self.record_test_result(
-        #         "SSL Certificate Generation",
-        #         False,
-        #         f"Exception during SSL testing: {e}",
-        #         duration
-        #     )
-        #     all_passed = False
-        # 
-        # return all_passed
+        all_passed = True
+        
+        start_time = time.time()
+        
+        try:
+            # Test certificate generation
+            success_key = self.ssl_manager.generate_key_pair(key_size=2048)
+            success_cert = self.ssl_manager.generate_self_signed_certificate(
+                common_name='test.lethologic.local'
+            )
+            
+            duration = time.time() - start_time
+            
+            if success_key and success_cert:
+                self.record_test_result(
+                    "SSL Certificate Generation",
+                    True,
+                    "Generated key pair and certificate with CN: test.lethologic.local",
+                    duration
+                )
+                
+                # Test certificate validation
+                validation_start = time.time()
+                
+                is_valid = self.ssl_manager.validate_key_pair()
+                validation_duration = time.time() - validation_start
+                
+                if is_valid:
+                    self.record_test_result(
+                        "SSL Certificate Validation",
+                        True,
+                        "Key pair validated successfully",
+                        validation_duration
+                    )
+                else:
+                    self.record_test_result(
+                        "SSL Certificate Validation",
+                        False,
+                        "Key pair validation failed",
+                        validation_duration
+                    )
+                    all_passed = False
+                    
+            else:
+                self.record_test_result(
+                    "SSL Certificate Generation",
+                    False,
+                    "Certificate/Key generation failed",
+                    duration
+                )
+                all_passed = False
+                
+        except Exception as e:
+            duration = time.time() - start_time
+            self.record_test_result(
+                "SSL Certificate Generation",
+                False,
+                f"Exception during SSL testing: {e}",
+                duration
+            )
+            all_passed = False
+        
+        return all_passed
     
     async def test_concurrent_operations(self) -> bool:
         """Test concurrent DICOM operations"""

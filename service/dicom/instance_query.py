@@ -21,7 +21,7 @@ from core.custom_logging import get_logger
 from core.database import DatabaseManager
 from core.config import Settings
 from .discovery import DICOMDiscoveryService
-from .ssl_manager import DICOMSSLManager
+from core.ssl_manager import SSLManager as DICOMSSLManager
 
 logger = get_logger(__name__)
 
@@ -84,7 +84,7 @@ class DICOMInstanceQueryService:
         self.federation_ae.network_timeout = self.config['query_timeout']
         
         # Check SSL availability
-        if self.ssl_manager.validate_certificate_pair():
+        if self.ssl_manager.validate_key_pair():
             self.config['ssl_enabled'] = True
             logger.info("SSL certificates available - federation will use secure connections")
         else:
