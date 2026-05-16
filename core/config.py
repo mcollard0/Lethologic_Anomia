@@ -225,7 +225,7 @@ class SSHSettings(BaseSettings):
     """SSH server configuration"""
     
     ssh_enabled: bool = Field(default=True, env="SSH_ENABLED")
-    ssh_port: int = Field(default=50022, env="SSH_PORT")
+    ssh_port: int = Field(default=0, env="SSH_PORT")
     ssh_host_key: Optional[str] = Field(default="etc/key/ssh_host_key", env="SSH_HOST_KEY")
     ssh_host_key_type: str = Field(default="rsa", env="SSH_HOST_KEY_TYPE")  # rsa, ed25519
     
